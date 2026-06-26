@@ -110,33 +110,43 @@ onUnmounted(() => {
   if (ws) ws.close()
 })
 
-// 建立并保持全局统一的 WebSocket 连接
+// 1. 带有详细日志的 WebSocket 初始化
 const initWebSocket = () => {
-  if (!authStore.username) return
-  ws = new WebSocket(`${WS_BASE}/chat/ws/${authStore.username}`)
+  if (!authStore.username) {
+    console.warn("⚠️ 警告：Pinia 中未读取到用户名，无法建立 WebSocket 连接！");
+    messages.push({ system: true, text: '⚠️ 错误：未读取到登录用户名，请尝试重新登录。' })
+    return
+  }
   
-  ws.onopen = () => { connected.value = true }
+  const wsUrl = `${BASE_WS_URL}/chat/ws/${authStore.username}`;
+  console.log(`📡 正在尝试连接 WebSocket 地址: ${wsUrl}`);
+  messages.push({ system: true, text: `🔌 正在尝试连接: ${wsUrl}` })
+  
+  ws = new WebSocket(wsUrl)
+  
+  ws.onopen = () => { 
+    connected.value = true 
+    console.log("✅ WebSocket 连接已成功建立！")
+  }
   
   ws.onmessage = (event) => {
     const data = JSON.parse(event.data)
-    
-    // 如果发消息的人正好是当前处于激活聊天窗口的人，则实时推入画面
-    if (selectedContact.value === data.from) {
-      messages.push({
-        from: data.from,
-        text: data.message,
-        time: getCurrentTimeLabel(),
-        self: false,
-        system: false
-      })
-      scrollToBottom()
+    if (data.system) {
+      messages.push({ system: true, text: `⚠️ 提醒: ${data.message}` })
     } else {
-      // 提醒用户收到未读（可选加入未读徽章逻辑，本MVP默认打印提示）
-      console.log(`收到来自 @${data.from} 的后台新消息: ${data.message}`)
+      messages.push({ from: data.from, text: data.message, self: false, system: false })
     }
+    scrollToBottom()
   }
   
-  ws.onclose = () => { connected.value = false }
+  ws.onclose = (event) => { 
+    connected.value = false 
+    console.warn("❌ WebSocket 连接已关闭，代码:", event.code, "原因:", event.reason);
+  }
+
+  ws.onerror = (err) => {
+    console.error("❌ WebSocket 发生错误:", err);
+  }
 }
 
 // 1. API: 获取联系人列表
@@ -201,26 +211,46 @@ const selectContact = async (friend) => {
   }
 }
 
-// 4. 发送私信
+// 2. 带有拦截弹窗的发送方法（替换原有的 sendMessage）
 const sendMessage = () => {
-  if (!connected.value || !ws || !selectedContact.value) return
+  // 显式拦截并弹窗，告知具体是哪个对象为空
+  if (!connected.value) {
+    alert("⚠️ 发送失败：实时聊天未连接（右上角为红色状态），请先点击右上角 [重连] 或检查网络。");
+    return;
+  }
+  if (!ws) {
+    alert("⚠️ 发送失败：WebSocket 实例未创建成功！");
+    return;
+  }
+  if (!selectedContact.value) {
+    alert("⚠️ 发送失败：请先在左侧选择一个联系人！");
+    return;
+  }
+  
   const text = messageInput.value.trim()
-  if (!text) return
+  if (!text) {
+    alert("⚠️ 不能发送空消息");
+    return;
+  }
 
-  // WebSocket 实时发射
-  ws.send(JSON.stringify({ to: selectedContact.value, message: text }))
-  
-  // 本地推入
-  messages.push({
-    from: authStore.username,
-    text: text,
-    time: getCurrentTimeLabel(),
-    self: true,
-    system: false
-  })
-  
-  messageInput.value = ''
-  scrollToBottom()
+  try {
+    // WebSocket 实时发射
+    ws.send(JSON.stringify({ to: selectedContact.value, message: text }))
+    
+    // 本地推入
+    messages.push({
+      from: authStore.username,
+      text: text,
+      time: getCurrentTimeLabel(),
+      self: true,
+      system: false
+    })
+    
+    messageInput.value = ''
+    scrollToBottom()
+  } catch (error) {
+    alert(`❌ 发送消息时发生异常: ${error.message}`);
+  }
 }
 
 // 辅助方法：滑动至底部与时间标签
