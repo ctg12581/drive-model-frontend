@@ -2,7 +2,7 @@
   <div class="feed-container">
     <!-- 发推风格的评测卡片 -->
     <div class="compose-card">
-      <h2 class="section-title">𝕏 DRIVE 新建评测</h2>
+      <h2 class="section-title">DRIVE Space 新建评测</h2>
       <form @submit.prevent="submitEvaluate">
         <div class="select-group" v-for="(label, key) in dimensions" :key="key">
           <div class="select-label">{{ label }}</div>

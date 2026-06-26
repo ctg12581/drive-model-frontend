@@ -5,7 +5,25 @@
       <div class="avatar-placeholder">
         {{ authStore.isLoggedIn ? authStore.username[0].toUpperCase() : '?' }}
       </div>
-      <div class="app-logo">𝕏 DRIVE</div>
+  <div class="app-logo">
+  <span class="logo-icon-inline">
+<svg viewBox="0 0 100 100" class="drive-logo-svg">
+  <defs>
+    <!-- 蓝紫渐变色 -->
+    <linearGradient id="drive-grad-simple" x1="0" y1="0" x2="100" y2="100" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#1d9bf0"/>
+      <stop offset="1" stop-color="#4f46e5"/>
+    </linearGradient>
+  </defs>
+  <!-- 极简 D 字母外框 -->
+  <path d="M 25,15 H 50 C 70,15 85,30 85,50 C 85,70 70,85 50,85 H 25 Z" 
+        stroke="url(#drive-grad-simple)" stroke-width="10" stroke-linejoin="round" stroke-linecap="round" fill="none"/>
+  <!-- 极简前行三角箭头 -->
+  <path d="M 42,34 L 66,50 L 42,66 Z" fill="url(#drive-grad-simple)" />
+</svg>
+  </span>
+  DRIVE Space
+</div>
       <div class="top-action-btn">
         <button v-if="authStore.isLoggedIn" @click="handleLogout" class="btn-logout-icon">
           登出
@@ -17,7 +35,25 @@
     <div class="main-container">
       <!-- 左侧边栏导航 (PC端可见，移动端隐藏) -->
       <aside class="sidebar">
-        <div class="sidebar-logo">𝕏 DRIVE</div>
+        <div class="sidebar-logo">
+  <span class="logo-icon-inline">
+<svg viewBox="0 0 100 100" class="drive-logo-svg">
+  <defs>
+    <!-- 蓝紫渐变色 -->
+    <linearGradient id="drive-grad-simple" x1="0" y1="0" x2="100" y2="100" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#1d9bf0"/>
+      <stop offset="1" stop-color="#4f46e5"/>
+    </linearGradient>
+  </defs>
+  <!-- 极简 D 字母外框 -->
+  <path d="M 25,15 H 50 C 70,15 85,30 85,50 C 85,70 70,85 50,85 H 25 Z" 
+        stroke="url(#drive-grad-simple)" stroke-width="10" stroke-linejoin="round" stroke-linecap="round" fill="none"/>
+  <!-- 极简前行三角箭头 -->
+  <path d="M 42,34 L 66,50 L 42,66 Z" fill="url(#drive-grad-simple)" />
+</svg>
+  </span>
+  DRIVE Space
+</div>
         <nav class="sidebar-nav">
           <router-link to="/drive" class="sidebar-link" active-class="active">
             <span class="icon">
@@ -253,5 +289,31 @@ body {
 }
 @media (min-width: 1095px) {
   .right-panel { display: block; }
+}
+
+/* 新 Logo 的样式规范 */
+.logo-icon-inline {
+  display: inline-block;
+  width: 28px;
+  height: 28px;
+  vertical-align: middle;
+  margin-right: 8px;
+}
+.logo-icon-inline .drive-logo-svg {
+  width: 100%;
+  height: 100%;
+}
+.app-logo, .sidebar-logo {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 900;
+  background: linear-gradient(to right, #1d9bf0, #4f46e5);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent; /* 让文字呈现高档的渐变色 */
+}
+.sidebar-logo {
+  justify-content: flex-start; /* 侧边栏文字靠左对齐 */
+  padding-left: 12px;
 }
 </style>
