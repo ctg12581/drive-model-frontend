@@ -1,11 +1,12 @@
 <template>
-  <div class="grid">
-    <div class="card">
-      <h2 style="margin-top: 0;">DRIVE 维度评级</h2>
+  <div class="feed-container">
+    <!-- 发推风格的评测卡片 -->
+    <div class="compose-card">
+      <h2 class="section-title">𝕏 DRIVE 新建评测</h2>
       <form @submit.prevent="submitEvaluate">
-        <div class="form-group" v-for="(label, key) in dimensions" :key="key">
-          <label>{{ label }}</label>
-          <select v-model="form[key]">
+        <div class="select-group" v-for="(label, key) in dimensions" :key="key">
+          <div class="select-label">{{ label }}</div>
+          <select v-model="form[key]" class="x-select">
             <option value="S">S 级 (战略/反脆弱/灯塔)</option>
             <option value="A">A 级 (独立/高效/敏捷)</option>
             <option value="B">B 级 (合格/常规/合规)</option>
@@ -13,18 +14,31 @@
             <option value="D">D 级 (回避/脆弱/流失)</option>
           </select>
         </div>
-        <button type="submit" class="btn w-full">生成加密诊断报告</button>
+        <div class="action-row">
+          <button type="submit" class="x-btn-primary">开始诊断</button>
+        </div>
       </form>
     </div>
 
-    <!-- 结果与雷达图展示 -->
-    <div v-show="result" class="card">
-      <h2 style="margin-top: 0;">诊断雷达图</h2>
-      <div class="chart-box">
-        <canvas id="radarChart"></canvas>
-      </div>
-      <div class="synthesis" v-if="result">
-        <p><b>💡 综合成长建议：</b> {{ result.synthesis }}</p>
+    <!-- 诊断结果展示 (完美融入主内容流) -->
+    <div v-show="result" class="result-feed">
+      <div class="tweet-card">
+        <div class="tweet-header">
+          <div class="tweet-avatar">🧠</div>
+          <div class="tweet-meta">
+            <span class="tweet-author">系统诊断姬</span>
+            <span class="tweet-handle">@drive_bot · 刚刚</span>
+          </div>
+        </div>
+        <div class="tweet-content">
+          <p>以下是根据您选择的评级，为您动态构建的 𝕏 雷达图。综合诊断如下：</p>
+          <p class="synthesis-text">💡 <strong>成长建议：</strong>{{ result ? result.synthesis : '' }}</p>
+          
+          <!-- 雷达图容器 -->
+          <div class="chart-wrapper">
+            <canvas id="radarChart"></canvas>
+          </div>
+        </div>
       </div>
     </div>
   </div>
@@ -33,10 +47,9 @@
 <script setup>
 import { ref, reactive, nextTick } from 'vue'
 import { useAuthStore } from '../store/auth'
-import Chart from 'chart.js/auto' // 使用工程化自带包自动注册元素
+import Chart from 'chart.js/auto'
 
 const API_BASE = import.meta.env.VITE_API_BASE || 'http://127.0.0.1:3000'
-
 const authStore = useAuthStore()
 const form = reactive({ d: 'B', r: 'B', i: 'B', v: 'B', e: 'B' })
 const result = ref(null)
@@ -56,43 +69,36 @@ const submitEvaluate = async () => {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${authStore.token}` // 携带全局 Pinia 缓存的 Token
+        'Authorization': `Bearer ${authStore.token}`
       },
       body: JSON.stringify(form)
     })
     const data = await res.json()
-
     if (res.ok) {
       result.value = data
-      // 等待 DOM 节点树更新完毕后渲染 Canvas 图表
-      nextTick(() => {
-        renderChart(data.scores)
-      })
+      nextTick(() => { renderChart(data.scores) })
     } else {
-      alert(data.detail || '评测提交失败')
+      alert(data.detail || '评测失败')
     }
   } catch {
-    alert('请求出错，请检查后端运行状态。')
+    alert('请求失败，请确保后端数据库运行正常')
   }
 }
 
 const renderChart = (scores) => {
   const ctx = document.getElementById('radarChart').getContext('2d')
-  if (chartInstance) {
-    chartInstance.destroy()
-  }
+  if (chartInstance) { chartInstance.destroy() }
   chartInstance = new Chart(ctx, {
     type: 'radar',
     data: {
-      labels: ['决策力 (D)', '韧性 (R)', '智力 (I)', '价值观 (V)', '灵活性 (E)'],
+      labels: ['决策 (D)', '韧性 (R)', '智力 (I)', '价值观 (V)', '弹性 (E)'],
       datasets: [{
-        label: '维度评价 (1~5)',
+        label: '评价得分',
         data: [scores.d, scores.r, scores.i, scores.v, scores.e],
-        backgroundColor: 'rgba(37, 99, 235, 0.2)',
-        borderColor: 'rgb(37, 99, 235)',
+        backgroundColor: 'rgba(29, 155, 240, 0.1)',
+        borderColor: '#1d9bf0',
         borderWidth: 2,
-        pointBackgroundColor: 'rgb(37, 99, 235)',
-        pointRadius: 4
+        pointBackgroundColor: '#1d9bf0'
       }]
     },
     options: {
@@ -104,12 +110,36 @@ const renderChart = (scores) => {
 </script>
 
 <style scoped>
-.grid { display: grid; grid-template-columns: 1fr; gap: 20px; }
-@media (min-width: 768px) { .grid { grid-template-columns: 1fr 1fr; } }
-.form-group { margin-bottom: 16px; }
-label { display: block; font-size: 0.875rem; font-weight: bold; margin-bottom: 6px; }
-select { width: 100%; padding: 10px; border: 1px solid #d1d5db; border-radius: 8px; }
-.w-full { width: 100%; }
-.chart-box { max-width: 320px; margin: 0 auto; }
-.synthesis { margin-top: 20px; border-top: 1px solid #f3f4f6; padding-top: 15px; font-size: 0.95rem; line-height: 1.5; }
+.feed-container { width: 100%; }
+.section-title { font-size: 1.25rem; font-weight: 800; padding: 12px 16px; margin: 0; border-bottom: 1px solid var(--x-border); }
+
+/* Compose 表单推文卡片 */
+.compose-card { padding: 16px; border-bottom: 1px solid var(--x-border); }
+.select-group { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+.select-label { font-size: 0.95rem; font-weight: 600; color: var(--x-text-main); }
+.x-select {
+  width: 50%; padding: 8px 12px; border: 1px solid var(--x-border); border-radius: 8px;
+  background: #ffffff; color: var(--x-text-main); font-size: 0.9rem; outline: none;
+}
+.x-select:focus { border-color: var(--x-blue); }
+
+.action-row { display: flex; justify-content: flex-end; margin-top: 16px; }
+.x-btn-primary {
+  background: var(--x-blue); color: #ffffff; border: none; font-weight: bold;
+  padding: 0 16px; height: 36px; border-radius: 9999px; cursor: pointer; transition: background 0.2s;
+}
+.x-btn-primary:hover { background: #1a8cd8; }
+
+/* Tweet 展现结果卡片 */
+.tweet-card { display: flex; padding: 16px; border-bottom: 1px solid var(--x-border); gap: 12px; }
+.tweet-avatar {
+  width: 40px; height: 40px; border-radius: 50%; background: #f7f9fa;
+  display: flex; align-items: center; justify-content: center; font-size: 1.25rem;
+}
+.tweet-content { flex: 1; }
+.tweet-meta { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; }
+.tweet-author { font-weight: bold; font-size: 0.95rem; }
+.tweet-handle { color: var(--x-text-gray); font-size: 0.85rem; }
+.synthesis-text { background: #f7f9fa; padding: 12px; border-radius: 12px; font-size: 0.95rem; line-height: 1.5; }
+.chart-wrapper { max-width: 320px; margin: 16px auto 0 auto; }
 </style>
