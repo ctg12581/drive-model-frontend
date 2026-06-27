@@ -64,15 +64,31 @@
         </p>
       </div>
 
-      <!-- 登录后展现状态 -->
+<!-- src/views/AuthView.vue 底部已登录状态的 success-box 进行升级重构： -->
       <div v-else class="success-box">
-        <div class="avatar-big">{{ authStore.username[0].toUpperCase() }}</div>
-        <h2>您已通过身份安全验证</h2>
-        <p class="profile-handle">@{{ authStore.username }}</p>
-        <p style="color: var(--x-text-gray); font-size: 0.9rem">
-          现在您可以自由进行 DRIVE
-          人格分析评测以及在实时大厅与其他在线用户在线通信。
-        </p>
+        <div class="avatar-big">{{ form.avatar || '👤' }}</div>
+        <h2>@{{ authStore.username }}</h2>
+        
+        <!-- 新增个人资料修改区域 -->
+        <div class="profile-edit-card">
+          <h3>编辑 𝕏 社交名片</h3>
+          <form @submit.prevent="updateProfile">
+            <div class="x-input-group">
+              <input type="text" v-model="form.nickname" placeholder="个性昵称" required>
+            </div>
+            <div class="x-input-group">
+              <input type="text" v-model="form.avatar" placeholder="自定义头像(Emoji或图片链接)" required>
+            </div>
+            <!-- 快捷推荐社交 Emoji -->
+            <div class="emoji-picker">
+              <span v-for="emoji in ['🚀','🐱','🦊','🎮','🦄','🐧','🌸','🐼']" :key="emoji" 
+                    @click="form.avatar = emoji" class="emoji-item">
+                {{ emoji }}
+              </span>
+            </div>
+            <button type="submit" class="x-btn-dark" style="background: var(--x-blue);">更新个人名片</button>
+          </form>
+        </div>
       </div>
     </div>
   </div>

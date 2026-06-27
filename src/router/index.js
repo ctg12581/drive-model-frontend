@@ -3,13 +3,15 @@ import { useAuthStore } from '../store/auth'
 import AuthView from '../views/AuthView.vue'
 import DriveView from '../views/DriveView.vue'
 import ChatView from '../views/ChatView.vue'
+import MomentsView from '../views/MomentsView.vue'
 
 const routes = [
   { path: '/', redirect: '/drive' },
   { path: '/auth', name: 'Auth', component: AuthView },
   // meta.requiresAuth 标记了哪些页面必须登录才能进入
   { path: '/drive', name: 'Drive', component: DriveView, meta: { requiresAuth: true } },
-  { path: '/chat', name: 'Chat', component: ChatView, meta: { requiresAuth: true } }
+  { path: '/chat', name: 'Chat', component: ChatView, meta: { requiresAuth: true } },
+  { path: '/moments', name: 'Moments', component: MomentsView, meta: { requiresAuth: true } }
 ]
 
 const router = createRouter({
