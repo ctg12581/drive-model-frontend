@@ -109,7 +109,6 @@ const fetchProfile = async () => {
       profileForm.nickname = data.nickname || authStore.username
       profileForm.avatar_url = data.avatar || '👤'
       
-      # 💡 核心升级：拉取成功后，静默同步写入全局状态银行，触发全站侧边栏、顶栏瞬间更新
       authStore.updateProfileState(profileForm.nickname, profileForm.avatar_url)
     }
   } catch (err) {
