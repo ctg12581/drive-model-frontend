@@ -42,6 +42,7 @@
 
       <!-- 已登录状态：编辑个人资料 -->
       <div v-else class="success-box">
+        <!-- 💡 瞬间渲染：大头像直接绑定缓存，0 毫秒展示 -->
         <div class="avatar-big">{{ profileForm.avatar_url || '👤' }}</div>
         <h2>@{{ authStore.username }}</h2>
         
@@ -50,6 +51,7 @@
           <form @submit.prevent="updateProfile">
             <div class="x-input-group">
               <label class="edit-label">我的昵称</label>
+              <!-- 💡 瞬间渲染：输入框直接双向绑定具有缓存初值的变量 -->
               <input type="text" v-model="profileForm.nickname" placeholder="设置个性昵称" required>
             </div>
             <div class="x-input-group">
@@ -81,23 +83,24 @@ const authStore = useAuthStore()
 const router = useRouter()
 const authMode = ref('login')
 
-// 1. 登录注册表单
+// 登录注册表单
 const form = reactive({ username: '', password: '' })
 
-// 2. 修改个人名片的专用表单
+// 💡 核心修改：不再使用空值初始化，而是【直接读取 Pinia 和本地物理缓存】
+// 这确保了用户每次切回个人设置主页时，名片信息都是 0 毫秒瞬间秒开展示，绝无白屏闪烁！
 const profileForm = reactive({
-  nickname: '',
-  avatar_url: '👤'
+  nickname: authStore.nickname || authStore.username, // 缓存优先，无昵称则默认显示账号
+  avatar_url: authStore.avatar || '👤'                // 缓存优先
 })
 
-// 页面加载时：如果已登录，自动从后端回显加载本人的昵称和头像
+// 页面加载时：默默在后台向服务器请求最新数据进行校验（静默更新）
 onMounted(() => {
   if (authStore.isLoggedIn) {
     fetchProfile()
   }
 })
 
-// 获取个人信息
+// 获取个人信息（静默更新全局与本地表单）
 const fetchProfile = async () => {
   try {
     const res = await fetch(`${API_BASE}/auth/profile/${authStore.username}`)
@@ -105,7 +108,8 @@ const fetchProfile = async () => {
     if (res.ok) {
       profileForm.nickname = data.nickname || authStore.username
       profileForm.avatar_url = data.avatar || '👤'
-      // 💡 核心升级：拉取成功后，立刻写入全局 Pinia 状态，完成全站同步！
+      
+      # 💡 核心升级：拉取成功后，静默同步写入全局状态银行，触发全站侧边栏、顶栏瞬间更新
       authStore.updateProfileState(profileForm.nickname, profileForm.avatar_url)
     }
   } catch (err) {
@@ -128,8 +132,11 @@ const handleSubmit = async () => {
         alert(data.message || '注册成功！')
         authMode.value = 'login'
       } else {
-        authStore.setLogin(data.access_token, form.username)
-        await fetchProfile() // 登录成功立刻获取一次个人名片
+        // 💡 登录时：先用基础的用户名初始化名片缓存，防止侧边栏出现空状态
+        authStore.setLogin(data.access_token, form.username, form.username, '👤')
+        
+        // 登录成功后，立刻在后台拉取真实名片资料，拉取完后全站自动静默重绘
+        await fetchProfile() 
         router.push('/drive')
       }
     } else {
@@ -140,7 +147,7 @@ const handleSubmit = async () => {
   }
 }
 
-// 提交个人资料修改
+// 提交个人名片更新
 const updateProfile = async () => {
   try {
     const res = await fetch(`${API_BASE}/auth/profile`, {
@@ -168,6 +175,7 @@ const updateProfile = async () => {
   }
 }
 </script>
+
 
 <style scoped>
 .auth-wrapper {

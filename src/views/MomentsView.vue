@@ -1,7 +1,7 @@
 <!-- src/views/MomentsView.vue -->
 <template>
   <div class="feed-container">
-    <!-- 顶部发布动态框 -->
+    <!-- 顶部发布动态框 (保持不变) -->
     <div class="compose-card">
       <div class="compose-layout">
         <div class="user-avatar">
@@ -18,8 +18,8 @@
       </div>
     </div>
 
-    <!-- 💡 核心升级：数据加载中，展示 𝕏 经典骨架屏占位 -->
-    <div v-if="loading" class="skeleton-container">
+    <!-- 💡 骨架屏：只有在【完全没有任何本地历史缓存】时，才需要展示 -->
+    <div v-if="loading && posts.length === 0" class="skeleton-container">
       <div v-for="i in 3" :key="i" class="skeleton-card">
         <div class="skeleton-avatar"></div>
         <div class="skeleton-info">
@@ -30,7 +30,7 @@
       </div>
     </div>
 
-    <!-- 数据加载完毕，展示真实的动态列表 -->
+    <!-- 真实动态列表：如果本地有缓存，会瞬间 0ms 秒开呈现，随后在后台静默刷新 -->
     <div v-else class="result-feed">
       <div v-if="posts.length === 0" class="no-posts-hint" style="text-align: center; padding: 40px; color: var(--x-text-gray);">
         暂无动态，快来发布第一条新鲜事吧！
@@ -55,7 +55,7 @@
       </div>
     </div>
 
-    <!-- 个人主页弹窗 (Profile Modal) -->
+    <!-- 个人主页弹窗 (Profile Modal) (保持不变) -->
     <div v-if="activeProfile" class="modal-backdrop" @click.self="activeProfile = null">
       <div class="modal-card">
         <button class="modal-close" @click="activeProfile = null">✕</button>
@@ -84,13 +84,21 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import { useAuthStore } from '../store/auth'
+import { useMomentsStore } from '../store/moments'
 import { formatLocalTime } from '../utils/date'
 
 const API_BASE = import.meta.env.VITE_API_BASE || 'http://127.0.0.1:3000'
 const authStore = useAuthStore()
+const momentsStore = useMomentsStore()
+
 const newPost = ref('')
-const posts = ref([])
-const loading = ref(true) // 💡 骨架屏加载状态控制
+
+// 💡 2. 核心修改：让本地渲染变量直接绑定 Pinia 里的缓存，一秒完成初始化
+const posts = ref(momentsStore.cachedPosts)
+
+// 💡 3. 核心修改：如果缓存里有数据，loading 直接置为 false（完全跳过骨架屏直接呈现数据）
+const loading = ref(posts.value.length === 0) 
+
 const activeProfile = ref(null)
 
 onMounted(() => {
@@ -98,20 +106,23 @@ onMounted(() => {
 })
 
 const fetchGlobalMoments = async () => {
-  loading.value = true // 开始加载
+  // 只有在完全没有历史缓存时，才展示骨架屏
+  if (posts.value.length === 0) {
+    loading.value = true
+  }
   try {
     const res = await fetch(`${API_BASE}/moments`)
     const data = await res.json()
     if (res.ok) {
+      // 💡 4. 数据回来后，更新全局缓存仓库，自动触发 LocalStorage 持久化
+      momentsStore.setPosts(data.moments)
+      // 💡 5. 静默更新当前视图
       posts.value = data.moments
     }
-  } catch {
-    console.error('获取动态失败')
+  } catch (err) {
+    console.error('获取动态失败', err)
   } finally {
-    // 稍微延迟 200ms 以获得极佳的动画缓动体验，如果网络极快也可以直接关闭
-    setTimeout(() => {
-      loading.value = false
-    }, 200)
+    loading.value = false
   }
 }
 
