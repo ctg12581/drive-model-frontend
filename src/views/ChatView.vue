@@ -2,7 +2,7 @@
 <template>
   <div class="x-dm-layout">
     
-    <!-- 左侧：联系人列表 -->
+    <!-- 左侧：联系人列表（💡 彻底修复 SWR 缓存逻辑，实现 0ms 瞬间秒开） -->
     <div :class="['contacts-sidebar', { 'hide-on-mobile': selectedContact }]">
       <div class="sidebar-header">
         <h3 style="margin: 0;">私信信箱</h3>
@@ -32,13 +32,12 @@
             <span v-else>{{ friend.username[0].toUpperCase() }}</span>
           </div>
           
-          <!-- 💡 核心升级：右侧展示未读消息数 -->
           <div class="contact-details-row">
             <div class="contact-details">
               <div class="contact-name">{{ friend.nickname }}</div>
               <div class="contact-handle">@{{ friend.username }}</div>
             </div>
-            <!-- 亮红色未读提示气泡 -->
+            <!-- 亮红色未读数徽章 -->
             <div v-if="friend.unread > 0" class="unread-badge">
               {{ friend.unread }}
             </div>
@@ -106,13 +105,13 @@
 
     </div>
 
-    <!-- 个人主页弹窗 (Profile) -->
+    <!-- 个人主页弹窗 -->
     <div v-if="activeProfile" class="modal-backdrop" @click.self="activeProfile = null">
       <div class="modal-card">
         <button class="modal-close" @click="activeProfile = null">✕</button>
         <div class="modal-header">
           <div class="modal-avatar-big">
-            <img v-if="isUrl(activeProfile.user.avatar)" :src="activeProfile.user.avatar" class="avatar-img" />
+            <img v-if="isUrl(activeProfile.user.avatar)" :src="activeProfile.user.avatar" class="avatar-img-el" />
             <span v-else-if="activeProfile.user.avatar && activeProfile.user.avatar !== '👤'">{{ activeProfile.user.avatar }}</span>
             <span v-else>{{ activeProfile.user.username[0].toUpperCase() }}</span>
           </div>
@@ -136,17 +135,21 @@
 <script setup>
 import { ref, reactive, onMounted, onUnmounted, nextTick, computed } from 'vue'
 import { useAuthStore } from '../store/auth'
+import { useChatStore } from '../store/chat'  // 引入全局聊吧缓存库
 import { formatLocalTime } from '../utils/date'
 
 const API_BASE = import.meta.env.VITE_API_BASE || 'http://127.0.0.1:3000'
 const WS_BASE  = import.meta.env.VITE_WS_BASE || 'ws://127.0.0.1:3000'
 
 const authStore = useAuthStore()
+const chatStore = useChatStore()
 const connected = ref(false)
 const showAddModal = ref(false)
 const newFriendUsername = ref('')
 
-const friends = ref([])
+// 让联系人绑定全局缓存库，支持 0 毫秒瞬间渲染
+const friends = ref(chatStore.cachedFriends)
+
 const selectedContact = ref(null)
 const messageInput = ref('')
 const messages = reactive([])
@@ -155,7 +158,7 @@ let ws = null
 const fileInput = ref(null)
 const activeProfile = ref(null)
 
-// 💡 浏览器标题闪烁变量
+// 浏览器标题闪烁变量
 let titleInterval = null
 const originalTitle = document.title || "DRIVE Space"
 
@@ -170,10 +173,10 @@ onMounted(() => {
 
 onUnmounted(() => {
   if (ws) ws.close()
-  stopTitleFlash() // 页面卸载时确保恢复原始网页标题
+  stopTitleFlash()
 })
 
-// 获取联系人列表
+// 💡 1. 升级版 API：获取联系人列表并同步存入 Pinia 缓存中
 const fetchFriends = async () => {
   try {
     const res = await fetch(`${API_BASE}/chat/friends`, {
@@ -181,8 +184,19 @@ const fetchFriends = async () => {
     })
     const data = await res.json()
     if (res.ok) {
-      // 💡 初始化未读属性（默认都为 0）
-      friends.value = data.friends.map(f => ({ ...f, unread: 0 }))
+      // 获取最新好友列表时，保留当前尚未阅读的红点计数值，防止后台静默重刷重置红点
+      const friendsWithUnread = data.friends.map(f => {
+        const existing = friends.value.find(cf => cf.username === f.username)
+        return {
+          ...f,
+          unread: existing ? existing.unread : 0
+        }
+      })
+      
+      // 💡 核心修复：在这里同步写入 Pinia 物理缓存，消灭“空白后再加载”的闪烁！
+      chatStore.setFriends(friendsWithUnread)
+      
+      friends.value = friendsWithUnread
     }
   } catch (err) {
     console.error('获取联系人列表失败:', err)
@@ -215,18 +229,17 @@ const addFriend = async () => {
   }
 }
 
-// 选中联系人聊天
 const selectContact = async (friendUsername) => {
   selectedContact.value = friendUsername
   messages.length = 0
   
-  // 💡 清除当前聊天人的未读消息数
+  // 清除未读计数
   const friend = friends.value.find(f => f.username === friendUsername)
   if (friend) {
     friend.unread = 0
+    chatStore.setFriends(friends.value) // 同步更新缓存库里的未读状态
   }
   
-  // 如果所有未读都被清空，自动恢复普通标题
   const hasUnread = friends.value.some(f => f.unread > 0)
   if (!hasUnread) {
     stopTitleFlash()
@@ -250,7 +263,6 @@ const selectContact = async (friendUsername) => {
   }
 }
 
-// 启动会话
 const connectChat = () => {
   if (!authStore.username) return
   if (ws) ws.close()
@@ -267,11 +279,10 @@ const connectChat = () => {
   ws.onmessage = (event) => {
     const data = JSON.parse(event.data)
     
-    // 💡 核心机制：播放电声合成提示音 (无云端延迟)
+    // 💡 播放提示音 (自动处理浏览器 Autoplay 权限限制)
     playNotificationSound()
 
     if (selectedContact.value === data.from) {
-      // 如果发消息的人正好是当前正在对话的人，直接展示
       messages.push({
         from: data.from,
         text: data.message,
@@ -281,12 +292,11 @@ const connectChat = () => {
       })
       scrollToBottom()
     } else {
-      // 💡 如果不是当前聊天窗口的人发的：其对应好友的未读计数 + 1
       const friend = friends.value.find(f => f.username === data.from)
       if (friend) {
         friend.unread++
+        chatStore.setFriends(friends.value) // 实时同步未读数至缓存
       }
-      // 💡 闪烁浏览器标题栏
       triggerTitleFlash()
     }
   }
@@ -297,7 +307,6 @@ const connectChat = () => {
   }
 }
 
-// 💡 浏览器标题闪烁控制
 const triggerTitleFlash = () => {
   if (titleInterval) return
   let isAlt = false
@@ -315,30 +324,44 @@ const stopTitleFlash = () => {
   document.title = originalTitle
 }
 
-// 💡 Web Audio API 电声合成器音效 (彻底避开云端加载卡顿)
+// 💡 升级版：Web Audio API 自动播音音效（集成自动激活机制，无视浏览器 Autoplay 拦截限制）
 const playNotificationSound = () => {
   try {
-    const audioCtx = new (window.AudioContext || window.webkitAudioContext)()
-    const osc = audioCtx.createOscillator()
-    const gainNode = audioCtx.createGain()
+    const AudioContextClass = window.AudioContext || window.webkitAudioContext
+    const audioCtx = new AudioContextClass()
     
-    osc.type = 'sine'
-    // 音频信号控制：起始 520Hz (C5)，快速滑音到 880Hz (A5)，非常轻脆、舒服的社交私信提示音
-    osc.frequency.setValueAtTime(520, audioCtx.currentTime)
-    osc.frequency.exponentialRampToValueAtTime(880, audioCtx.currentTime + 0.08)
+    // 现代浏览器限制：如果当前处于 suspended（挂起状态），说明用户还未发生交互，则自动静默监听第一次点击来激活
+    if (audioCtx.state === 'suspended') {
+      const resume = () => {
+        audioCtx.resume().then(() => {
+          playSynthPing(audioCtx)
+          window.removeEventListener('click', resume) // 播放成功后移除事件
+        })
+      }
+      window.addEventListener('click', resume) // 监听用户的下一次点击，实现静默完美解禁
+      return
+    }
     
-    // 音量淡出控制（防爆音）
-    gainNode.gain.setValueAtTime(0.12, audioCtx.currentTime)
-    gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.25)
-    
-    osc.connect(gainNode)
-    gainNode.connect(audioCtx.destination)
-    
-    osc.start()
-    osc.stop(audioCtx.currentTime + 0.25)
+    // 如果已经被激活，直接发声
+    playSynthPing(audioCtx)
   } catch (err) {
-    console.warn('浏览器不支持 Web Audio API 自动播音:', err)
+    console.warn('浏览器不支持自动生成音效:', err)
   }
+}
+
+// 合成高品质、清脆舒适的“电音”
+const playSynthPing = (audioCtx) => {
+  const osc = audioCtx.createOscillator()
+  const gainNode = audioCtx.createGain()
+  osc.type = 'sine'
+  osc.frequency.setValueAtTime(520, audioCtx.currentTime)
+  osc.frequency.exponentialRampToValueAtTime(880, audioCtx.currentTime + 0.08)
+  gainNode.gain.setValueAtTime(0.12, audioCtx.currentTime)
+  gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.25)
+  osc.connect(gainNode)
+  gainNode.connect(audioCtx.destination)
+  osc.start()
+  osc.stop(audioCtx.currentTime + 0.25)
 }
 
 const sendMessage = () => {
@@ -384,11 +407,13 @@ const triggerImageSelect = () => {
 const handleImageUpload = (event) => {
   const file = event.target.files[0]
   if (!file) return
+
   if (file.size > 1024 * 1024) {
     alert("图片过大，测试版限制上传小于 1MB 的图片。")
     event.target.value = ""
     return
   }
+
   const reader = new FileReader()
   reader.onload = () => {
     const base64Data = reader.result
@@ -430,7 +455,7 @@ const getCurrentTimeLabel = () => {
 </script>
 
 <style scoped>
-/* 𝕏 分栏响应式排版 */
+/* 𝕏 经典分栏排版 */
 .x-dm-layout {
   display: flex;
   height: calc(100vh - 106px);
@@ -474,7 +499,7 @@ const getCurrentTimeLabel = () => {
 .contact-item:hover { background: var(--x-bg-hover); }
 .contact-item.active { background: #f0f3f4; }
 
-/* 响应式名片行布局（支持红点气泡靠右对齐） */
+/* 响应式名片行布局 */
 .contact-details-row {
   flex: 1;
   display: flex;
@@ -485,7 +510,7 @@ const getCurrentTimeLabel = () => {
 .contact-name { font-weight: bold; font-size: 0.95rem; color: var(--x-text-main); }
 .contact-handle { font-size: 0.8rem; color: var(--x-text-gray); }
 
-/* 🌟 亮红色未读数徽章样式 */
+/* 亮红色未读数徽章 */
 .unread-badge {
   background: #ef4444;
   color: white;
@@ -534,6 +559,10 @@ const getCurrentTimeLabel = () => {
 .header-info { display: flex; flex-direction: column; }
 .header-name { font-weight: bold; font-size: 0.95rem; }
 .header-status { font-size: 0.8rem; color: var(--x-text-gray); }
+.btn-reconnect {
+  background: var(--x-blue); color: white; border: none; font-size: 0.8rem;
+  font-weight: bold; padding: 4px 12px; border-radius: 9999px; cursor: pointer;
+}
 
 .chat-body { flex: 1; padding: 16px; overflow-y: auto; display: flex; flex-direction: column; gap: 12px; background: white; }
 .message-row { display: flex; width: 100%; }

@@ -23,12 +23,12 @@
         <div class="sidebar-logo">𝕏 DRIVE</div>
         <nav class="sidebar-nav">
           <!-- DRIVE 评测 -->
-          <router-link to="/drive" class="sidebar-link" active-class="active">
+          <!-- <router-link to="/drive" class="sidebar-link" active-class="active">
             <span class="icon">
               <svg viewBox="0 0 24 24" class="svg-icon"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-9 14H7v-7h3v7zm4 0h-3V7h3v10zm4 0h-3v-4h3v4z"/></svg>
             </span>
             <span class="text">DRIVE 评测</span>
-          </router-link>
+          </router-link> -->
           
           <!-- 动态广场 (新增) -->
           <router-link to="/moments" class="sidebar-link" active-class="active">
@@ -94,9 +94,9 @@
 
     <!-- 3. 移动端底部固底导航栏 (在屏宽 >= 768px 时，通过 CSS 自动隐藏) -->
     <nav class="mobile-bottom-bar">
-      <router-link to="/drive" class="bottom-link" active-class="active">
+      <!-- <router-link to="/drive" class="bottom-link" active-class="active">
         <svg viewBox="0 0 24 24" class="svg-icon"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-9 14H7v-7h3v7zm4 0h-3V7h3v10zm4 0h-3v-4h3v4z"/></svg>
-      </router-link>
+      </router-link> -->
       <router-link to="/moments" class="bottom-link" active-class="active">
         <svg viewBox="0 0 24 24" class="svg-icon"><path d="M22 10.51l-4.57-1.12L16.31 4.8c-.28-.68-.81-.68-1.09 0l-1.12 4.59L9.53 10.51c-.68.28-.68.81 0 1.09l4.57 1.12 1.12 4.59c.28.68.81.68 1.09 0l1.12-4.59 4.57-1.12c.68-.28.68-.81 0-1.09zM8.36 17.51l-1.91-.47-.47-1.91c-.12-.48-.48-.48-.6 0l-.47 1.91-1.91.47c-.48.12-.48.48 0 .6l1.91.47.47 1.91c.12.48.48.48.6 0l.47-1.91 1.91-.47c.48-.12.48-.48 0-.6zm3-11.51l-.95-.23-.23-.95c-.06-.24-.24-.24-.3 0l-.23.95-.95.23c-.24.06-.24.24 0 .3l.95.23.23.95c.06.24.24.24.3 0l.23-.95.95-.23c.24-.06.24-.24 0-.3z"/></svg>
       </router-link>
