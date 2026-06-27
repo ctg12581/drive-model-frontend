@@ -2,7 +2,7 @@
 <template>
   <div class="x-dm-layout">
     
-    <!-- 左侧：联系人列表（💡 引入 SWR，实现 0 毫秒秒开，彻底告别空白） -->
+    <!-- 左侧：联系人列表 -->
     <div :class="['contacts-sidebar', { 'hide-on-mobile': selectedContact }]">
       <div class="sidebar-header">
         <h3 style="margin: 0;">私信信箱</h3>
@@ -32,10 +32,18 @@
             <span v-else>{{ friend.username[0].toUpperCase() }}</span>
           </div>
           
-          <div class="contact-details">
-            <div class="contact-name">{{ friend.nickname }}</div>
-            <div class="contact-handle">@{{ friend.username }}</div>
+          <!-- 💡 核心升级：右侧展示未读消息数 -->
+          <div class="contact-details-row">
+            <div class="contact-details">
+              <div class="contact-name">{{ friend.nickname }}</div>
+              <div class="contact-handle">@{{ friend.username }}</div>
+            </div>
+            <!-- 亮红色未读提示气泡 -->
+            <div v-if="friend.unread > 0" class="unread-badge">
+              {{ friend.unread }}
+            </div>
           </div>
+
         </div>
       </div>
     </div>
@@ -98,21 +106,19 @@
 
     </div>
 
-    <!-- 个人主页弹窗 (Profile Modal) -->
+    <!-- 个人主页弹窗 (Profile) -->
     <div v-if="activeProfile" class="modal-backdrop" @click.self="activeProfile = null">
       <div class="modal-card">
         <button class="modal-close" @click="activeProfile = null">✕</button>
-        
         <div class="modal-header">
           <div class="modal-avatar-big">
-            <img v-if="isUrl(activeProfile.user.avatar)" :src="activeProfile.user.avatar" class="avatar-img-el" />
+            <img v-if="isUrl(activeProfile.user.avatar)" :src="activeProfile.user.avatar" class="avatar-img" />
             <span v-else-if="activeProfile.user.avatar && activeProfile.user.avatar !== '👤'">{{ activeProfile.user.avatar }}</span>
             <span v-else>{{ activeProfile.user.username[0].toUpperCase() }}</span>
           </div>
           <h2 class="modal-nickname">{{ activeProfile.user.nickname }}</h2>
           <p class="modal-handle">@{{ activeProfile.user.username }}</p>
         </div>
-
         <div class="modal-body">
           <h3 class="modal-tab-title">TA 的动态 ({{ activeProfile.posts.length }})</h3>
           <div v-if="activeProfile.posts.length === 0" class="no-posts-hint">TA 还没有发布过任何动态。</div>
@@ -130,21 +136,17 @@
 <script setup>
 import { ref, reactive, onMounted, onUnmounted, nextTick, computed } from 'vue'
 import { useAuthStore } from '../store/auth'
-import { useChatStore } from '../store/chat'  // 💡 1. 引入全新建立的聊吧缓存状态库
 import { formatLocalTime } from '../utils/date'
 
 const API_BASE = import.meta.env.VITE_API_BASE || 'http://127.0.0.1:3000'
 const WS_BASE  = import.meta.env.VITE_WS_BASE || 'ws://127.0.0.1:3000'
 
 const authStore = useAuthStore()
-const chatStore = useChatStore() // 激活缓存库
 const connected = ref(false)
 const showAddModal = ref(false)
 const newFriendUsername = ref('')
 
-// 💡 2. 核心修改：让联系人列表直接绑定全局 Pinia 缓存，实现 0ms 无缝秒开
-const friends = ref(chatStore.cachedFriends)
-
+const friends = ref([])
 const selectedContact = ref(null)
 const messageInput = ref('')
 const messages = reactive([])
@@ -152,6 +154,10 @@ let ws = null
 
 const fileInput = ref(null)
 const activeProfile = ref(null)
+
+// 💡 浏览器标题闪烁变量
+let titleInterval = null
+const originalTitle = document.title || "DRIVE Space"
 
 const selectedContactProfile = computed(() => {
   return friends.value.find(f => f.username === selectedContact.value)
@@ -164,9 +170,10 @@ onMounted(() => {
 
 onUnmounted(() => {
   if (ws) ws.close()
+  stopTitleFlash() // 页面卸载时确保恢复原始网页标题
 })
 
-// 3. API: 获取联系人列表（后台静默运行）
+// 获取联系人列表
 const fetchFriends = async () => {
   try {
     const res = await fetch(`${API_BASE}/chat/friends`, {
@@ -174,9 +181,8 @@ const fetchFriends = async () => {
     })
     const data = await res.json()
     if (res.ok) {
-      // 💡 4. 数据回传后，静默写入全局缓存库和本地渲染流，自动去重/更新头像昵称
-      chatStore.setFriends(data.friends)
-      friends.value = data.friends
+      // 💡 初始化未读属性（默认都为 0）
+      friends.value = data.friends.map(f => ({ ...f, unread: 0 }))
     }
   } catch (err) {
     console.error('获取联系人列表失败:', err)
@@ -209,10 +215,23 @@ const addFriend = async () => {
   }
 }
 
+// 选中联系人聊天
 const selectContact = async (friendUsername) => {
   selectedContact.value = friendUsername
   messages.length = 0
   
+  // 💡 清除当前聊天人的未读消息数
+  const friend = friends.value.find(f => f.username === friendUsername)
+  if (friend) {
+    friend.unread = 0
+  }
+  
+  // 如果所有未读都被清空，自动恢复普通标题
+  const hasUnread = friends.value.some(f => f.unread > 0)
+  if (!hasUnread) {
+    stopTitleFlash()
+  }
+
   try {
     const res = await fetch(`${API_BASE}/chat/history/${friendUsername}`, {
       headers: { 'Authorization': `Bearer ${authStore.token}` }
@@ -231,6 +250,7 @@ const selectContact = async (friendUsername) => {
   }
 }
 
+// 启动会话
 const connectChat = () => {
   if (!authStore.username) return
   if (ws) ws.close()
@@ -246,7 +266,12 @@ const connectChat = () => {
 
   ws.onmessage = (event) => {
     const data = JSON.parse(event.data)
+    
+    // 💡 核心机制：播放电声合成提示音 (无云端延迟)
+    playNotificationSound()
+
     if (selectedContact.value === data.from) {
+      // 如果发消息的人正好是当前正在对话的人，直接展示
       messages.push({
         from: data.from,
         text: data.message,
@@ -255,12 +280,64 @@ const connectChat = () => {
         system: false
       })
       scrollToBottom()
+    } else {
+      // 💡 如果不是当前聊天窗口的人发的：其对应好友的未读计数 + 1
+      const friend = friends.value.find(f => f.username === data.from)
+      if (friend) {
+        friend.unread++
+      }
+      // 💡 闪烁浏览器标题栏
+      triggerTitleFlash()
     }
   }
 
   ws.onclose = () => {
     connected.value = false
     messages.push({ system: true, text: '🔴 连接断开，可点击右上角重新连接。' })
+  }
+}
+
+// 💡 浏览器标题闪烁控制
+const triggerTitleFlash = () => {
+  if (titleInterval) return
+  let isAlt = false
+  titleInterval = setInterval(() => {
+    document.title = isAlt ? "【新消息】DRIVE Space" : "【　　　】DRIVE Space"
+    isAlt = !isAlt
+  }, 800)
+}
+
+const stopTitleFlash = () => {
+  if (titleInterval) {
+    clearInterval(titleInterval)
+    titleInterval = null
+  }
+  document.title = originalTitle
+}
+
+// 💡 Web Audio API 电声合成器音效 (彻底避开云端加载卡顿)
+const playNotificationSound = () => {
+  try {
+    const audioCtx = new (window.AudioContext || window.webkitAudioContext)()
+    const osc = audioCtx.createOscillator()
+    const gainNode = audioCtx.createGain()
+    
+    osc.type = 'sine'
+    // 音频信号控制：起始 520Hz (C5)，快速滑音到 880Hz (A5)，非常轻脆、舒服的社交私信提示音
+    osc.frequency.setValueAtTime(520, audioCtx.currentTime)
+    osc.frequency.exponentialRampToValueAtTime(880, audioCtx.currentTime + 0.08)
+    
+    // 音量淡出控制（防爆音）
+    gainNode.gain.setValueAtTime(0.12, audioCtx.currentTime)
+    gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.25)
+    
+    osc.connect(gainNode)
+    gainNode.connect(audioCtx.destination)
+    
+    osc.start()
+    osc.stop(audioCtx.currentTime + 0.25)
+  } catch (err) {
+    console.warn('浏览器不支持 Web Audio API 自动播音:', err)
   }
 }
 
@@ -301,21 +378,17 @@ const openUserProfile = async (targetUsername) => {
 }
 
 const triggerImageSelect = () => {
-  if (fileInput.value) {
-    fileInput.value.click()
-  }
+  if (fileInput.value) { fileInput.value.click() }
 }
 
 const handleImageUpload = (event) => {
   const file = event.target.files[0]
   if (!file) return
-
   if (file.size > 1024 * 1024) {
     alert("图片过大，测试版限制上传小于 1MB 的图片。")
     event.target.value = ""
     return
   }
-
   const reader = new FileReader()
   reader.onload = () => {
     const base64Data = reader.result
@@ -357,7 +430,7 @@ const getCurrentTimeLabel = () => {
 </script>
 
 <style scoped>
-/* 𝕏 经典分栏排版 */
+/* 𝕏 分栏响应式排版 */
 .x-dm-layout {
   display: flex;
   height: calc(100vh - 106px);
@@ -401,7 +474,39 @@ const getCurrentTimeLabel = () => {
 .contact-item:hover { background: var(--x-bg-hover); }
 .contact-item.active { background: #f0f3f4; }
 
-/* 💡 头像：纯白底色加细边框，鼠标悬停变蓝 */
+/* 响应式名片行布局（支持红点气泡靠右对齐） */
+.contact-details-row {
+  flex: 1;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.contact-details { display: flex; flex-direction: column; text-align: left; }
+.contact-name { font-weight: bold; font-size: 0.95rem; color: var(--x-text-main); }
+.contact-handle { font-size: 0.8rem; color: var(--x-text-gray); }
+
+/* 🌟 亮红色未读数徽章样式 */
+.unread-badge {
+  background: #ef4444;
+  color: white;
+  font-size: 0.75rem;
+  font-weight: bold;
+  min-width: 18px;
+  height: 18px;
+  border-radius: 9999px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 4px;
+  box-sizing: border-box;
+  animation: pop-scale 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+@keyframes pop-scale {
+  0% { transform: scale(0); }
+  100% { transform: scale(1); }
+}
+
+/* 极简头像，细框 */
 .contact-avatar {
   width: 38px; height: 38px;
   background: #ffffff;
@@ -413,14 +518,8 @@ const getCurrentTimeLabel = () => {
   cursor: pointer;
   transition: border-color 0.2s;
 }
-.contact-avatar:hover {
-  border-color: var(--x-blue);
-}
+.contact-avatar:hover { border-color: var(--x-blue); }
 .avatar-img { width: 100%; height: 100%; object-fit: cover; }
-
-.contact-details { display: flex; flex-direction: column; text-align: left; }
-.contact-name { font-weight: bold; font-size: 0.95rem; color: var(--x-text-main); }
-.contact-handle { font-size: 0.8rem; color: var(--x-text-gray); }
 
 /* 右侧聊天主窗口 */
 .chat-main { width: 100%; display: flex; flex-direction: column; }
@@ -432,13 +531,9 @@ const getCurrentTimeLabel = () => {
 }
 .chat-header-left { display: flex; align-items: center; gap: 12px; }
 .btn-back { background: transparent; border: none; cursor: pointer; color: var(--x-text-main); display: flex; align-items: center; }
-.header-info { display: flex; flex-direction: column; text-align: left; }
+.header-info { display: flex; flex-direction: column; }
 .header-name { font-weight: bold; font-size: 0.95rem; }
 .header-status { font-size: 0.8rem; color: var(--x-text-gray); }
-.btn-reconnect {
-  background: var(--x-blue); color: white; border: none; font-size: 0.8rem;
-  font-weight: bold; padding: 4px 12px; border-radius: 9999px; cursor: pointer;
-}
 
 .chat-body { flex: 1; padding: 16px; overflow-y: auto; display: flex; flex-direction: column; gap: 12px; background: white; }
 .message-row { display: flex; width: 100%; }
@@ -464,7 +559,7 @@ const getCurrentTimeLabel = () => {
 .btn-send { background: transparent; border: none; cursor: pointer; display: flex; align-items: center; color: var(--x-blue); }
 .btn-send:disabled { color: var(--x-text-gray); cursor: not-allowed; }
 
-/* 🌟 个人主页弹窗样式 (Profile Modal) */
+/* 个人主页弹窗 (Profile) */
 .modal-backdrop {
   position: fixed; top: 0; bottom: 0; left: 0; right: 0;
   background: rgba(0, 0, 0, 0.4); display: flex; align-items: center; justify-content: center;
@@ -481,8 +576,8 @@ const getCurrentTimeLabel = () => {
 }
 .modal-header { padding: 30px 24px 16px 24px; text-align: center; border-bottom: 1px solid var(--x-border); }
 .modal-avatar-big {
-  width: 70px; height: 70px; background: #ffffff; border: 1px solid var(--x-border); border-radius: 50%; font-size: 2.5rem;
-  display: flex; align-items: center; justify-content: center; margin: 0 auto 12px auto; overflow: hidden;
+  width: 70px; height: 70px; background: #eff3f4; border-radius: 50%; font-size: 2.5rem;
+  display: flex; align-items: center; justify-content: center; margin: 0 auto 12px auto;
 }
 .modal-nickname { margin: 0; font-size: 1.25rem; font-weight: 800; }
 .modal-handle { margin: 4px 0 0 0; color: var(--x-text-gray); font-size: 0.9rem; }
@@ -490,7 +585,7 @@ const getCurrentTimeLabel = () => {
 .modal-body { flex: 1; overflow-y: auto; padding: 16px 24px; }
 .modal-tab-title { font-size: 1rem; font-weight: 800; border-bottom: 2px solid var(--x-blue); padding-bottom: 6px; margin: 0 0 12px 0; display: inline-block;}
 .no-posts-hint { text-align: center; color: var(--x-text-gray); font-size: 0.9rem; padding: 24px 0; }
-.modal-tweet { padding: 12px 0; border-bottom: 1px solid var(--x-border); text-align: left; }
+.modal-tweet { padding: 12px 0; border-bottom: 1px solid var(--x-border); }
 .modal-tweet-time { font-size: 0.8rem; color: var(--x-text-gray); margin-bottom: 4px; }
 .modal-tweet-content { font-size: 0.95rem; line-height: 1.4; word-wrap: break-word;}
 
