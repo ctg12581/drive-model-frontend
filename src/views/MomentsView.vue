@@ -4,7 +4,10 @@
     <!-- 顶部发布动态框 -->
     <div class="compose-card">
       <div class="compose-layout">
-        <div class="user-avatar">{{ authStore.username[0].toUpperCase() }}</div>
+        <div class="user-avatar">
+          <img v-if="isUrl(authStore.avatar)" :src="authStore.avatar" class="avatar-img-el" />
+          <span v-else>{{ authStore.avatar }}</span>
+        </div>
         <div class="compose-main">
           <textarea v-model="newPost" placeholder="有什么新鲜事？" class="x-textarea" rows="3" max-length="280"></textarea>
           <div class="compose-footer">
@@ -15,39 +18,59 @@
       </div>
     </div>
 
-    <!-- 动态时间轴流 -->
-    <div class="timeline">
-      <div v-for="post in posts" :key="post.id" class="tweet-card">
-        <!-- 点击头像打开该联系人的个人主页弹窗 -->
-        <div class="tweet-avatar" @click="openUserProfile(post.username)">
-          {{ post.avatar || '👤' }}
-        </div>
-        <div class="tweet-main">
-          <div class="tweet-header">
-            <span class="tweet-author" @click="openUserProfile(post.username)">{{ post.nickname }}</span>
-            <span class="tweet-handle">@{{ post.username }} · {{ formatLocalTime(post.time) }}</span>
-          </div>
-          <div class="tweet-content">{{ post.content }}</div>
+    <!-- 💡 核心升级：数据加载中，展示 𝕏 经典骨架屏占位 -->
+    <div v-if="loading" class="skeleton-container">
+      <div v-for="i in 3" :key="i" class="skeleton-card">
+        <div class="skeleton-avatar"></div>
+        <div class="skeleton-info">
+          <div class="skeleton-line short"></div>
+          <div class="skeleton-line long"></div>
+          <div class="skeleton-line mid"></div>
         </div>
       </div>
     </div>
 
-    <!-- 🌟 精美个人主页弹窗 (Profile Modal) -->
+    <!-- 数据加载完毕，展示真实的动态列表 -->
+    <div v-else class="result-feed">
+      <div v-if="posts.length === 0" class="no-posts-hint" style="text-align: center; padding: 40px; color: var(--x-text-gray);">
+        暂无动态，快来发布第一条新鲜事吧！
+      </div>
+      <div v-for="post in posts" :key="post.id" class="tweet-card">
+        <div class="tweet-avatar" @click="openUserProfile(post.username)">
+          <img v-if="isUrl(post.avatar)" :src="post.avatar" class="avatar-img-el" />
+          <span v-else-if="post.avatar && post.avatar !== '👤'">{{ post.avatar }}</span>
+          <span v-else>{{ post.username[0].toUpperCase() }}</span>
+        </div>
+        <div class="tweet-content">
+          <div class="tweet-header">
+            <div class="tweet-meta">
+              <span class="tweet-author">{{ post.nickname }}</span>
+              <span class="tweet-handle">@{{ post.username }} · {{ formatLocalTime(post.time) }}</span>
+            </div>
+          </div>
+          <div class="tweet-body">
+            <p class="tweet-text">{{ post.content }}</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 个人主页弹窗 (Profile Modal) -->
     <div v-if="activeProfile" class="modal-backdrop" @click.self="activeProfile = null">
       <div class="modal-card">
         <button class="modal-close" @click="activeProfile = null">✕</button>
-        
-        <!-- 主页头部基本信息 -->
         <div class="modal-header">
-          <div class="modal-avatar-big">{{ activeProfile.user.avatar || '👤' }}</div>
+          <div class="modal-avatar-big">
+            <img v-if="isUrl(activeProfile.user.avatar)" :src="activeProfile.user.avatar" class="avatar-img-el" />
+            <span v-else-if="activeProfile.user.avatar && activeProfile.user.avatar !== '👤'">{{ activeProfile.user.avatar }}</span>
+            <span v-else>{{ activeProfile.user.username[0].toUpperCase() }}</span>
+          </div>
           <h2 class="modal-nickname">{{ activeProfile.user.nickname }}</h2>
           <p class="modal-handle">@{{ activeProfile.user.username }}</p>
         </div>
-
-        <!-- 该用户的个人专属动态流 -->
         <div class="modal-body">
           <h3 class="modal-tab-title">TA 的动态 ({{ activeProfile.posts.length }})</h3>
-          <div v-if="activeProfile.posts.length === 0" class="no-posts-hint">TA 还没有发过任何动态。</div>
+          <div v-if="activeProfile.posts.length === 0" class="no-posts-hint">TA 还没有发布过任何动态。</div>
           <div v-for="p in activeProfile.posts" :key="p.id" class="modal-tweet">
             <div class="modal-tweet-time">{{ formatLocalTime(p.time) }}</div>
             <div class="modal-tweet-content">{{ p.content }}</div>
@@ -55,7 +78,6 @@
         </div>
       </div>
     </div>
-
   </div>
 </template>
 
@@ -68,16 +90,15 @@ const API_BASE = import.meta.env.VITE_API_BASE || 'http://127.0.0.1:3000'
 const authStore = useAuthStore()
 const newPost = ref('')
 const posts = ref([])
-
-// 弹窗状态存储：包含被查看用户的基本资料及TA的历史帖子
+const loading = ref(true) // 💡 骨架屏加载状态控制
 const activeProfile = ref(null)
 
 onMounted(() => {
   fetchGlobalMoments()
 })
 
-// 1. API: 获取全局动态
 const fetchGlobalMoments = async () => {
+  loading.value = true // 开始加载
   try {
     const res = await fetch(`${API_BASE}/moments`)
     const data = await res.json()
@@ -86,10 +107,14 @@ const fetchGlobalMoments = async () => {
     }
   } catch {
     console.error('获取动态失败')
+  } finally {
+    // 稍微延迟 200ms 以获得极佳的动画缓动体验，如果网络极快也可以直接关闭
+    setTimeout(() => {
+      loading.value = false
+    }, 200)
   }
 }
 
-// 2. API: 发布新动态
 const publishPost = async () => {
   if (!newPost.value.trim()) return
   try {
@@ -103,26 +128,22 @@ const publishPost = async () => {
     })
     if (res.ok) {
       newPost.value = ''
-      fetchGlobalMoments() // 重新加载流
+      fetchGlobalMoments()
     }
   } catch {
-    alert('发布失败，请重试')
+    alert('发布失败')
   }
 }
 
-// 3. API: 点击头像，打开并装载目标用户的个人主页弹窗
 const openUserProfile = async (targetUsername) => {
   try {
-    // 异步双向拉取：基本资料 + 个人帖子
     const [profileRes, postsRes] = await Promise.all([
       fetch(`${API_BASE}/auth/profile/${targetUsername}`),
       fetch(`${API_BASE}/moments/user/${targetUsername}`)
     ])
-    
     if (profileRes.ok && postsRes.ok) {
       const user = await profileRes.json()
       const userPosts = await postsRes.json()
-      
       activeProfile.value = {
         user: user,
         posts: userPosts.moments
@@ -132,12 +153,35 @@ const openUserProfile = async (targetUsername) => {
     alert('装载用户主页失败')
   }
 }
+
+const isUrl = (text) => {
+  if (!text) return false
+  return text.startsWith('http://') || text.startsWith('https://') || text.startsWith('/')
+}
 </script>
 
 <style scoped>
 .feed-container { width: 100%; position: relative; }
 
-/* 发帖卡片 */
+/* 🌟 骨架屏核心样式（渐变呼吸灯动画） */
+@keyframes pulse {
+  0% { opacity: 0.5; }
+  50% { opacity: 1; }
+  100% { opacity: 0.5; }
+}
+.skeleton-container { display: flex; flex-direction: column; }
+.skeleton-card {
+  display: flex; gap: 12px; padding: 16px; border-bottom: 1px solid var(--x-border);
+  animation: pulse 1.5s infinite ease-in-out;
+}
+.skeleton-avatar { width: 40px; height: 40px; border-radius: 50%; background: #eff3f4; }
+.skeleton-info { flex: 1; display: flex; flex-direction: column; gap: 8px; justify-content: center; }
+.skeleton-line { height: 11px; background: #eff3f4; border-radius: 4px; }
+.skeleton-line.short { width: 25%; }
+.skeleton-line.mid { width: 45%; }
+.skeleton-line.long { width: 85%; }
+
+/* 以下保持原有的 Moments 样式 */
 .compose-card { padding: 16px; border-bottom: 1px solid var(--x-border); }
 .compose-layout { display: flex; gap: 12px; }
 .user-avatar {
@@ -159,20 +203,19 @@ const openUserProfile = async (targetUsername) => {
 }
 .x-btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
 
-/* 动态列表卡片 */
 .tweet-card { display: flex; padding: 16px; border-bottom: 1px solid var(--x-border); gap: 12px; }
 .tweet-avatar {
-  width: 40px; height: 40px; border-radius: 50%; background: #eff3f4;
-  display: flex; align-items: center; justify-content: center; font-size: 1.5rem; cursor: pointer;
+  width: 40px; height: 40px; border-radius: 50%; background: #ffffff; border: 1px solid var(--x-border);
+  display: flex; align-items: center; justify-content: center; font-size: 1.5rem; cursor: pointer; overflow: hidden;
 }
-.tweet-main { flex: 1; }
+.tweet-main { flex: 1; text-align: left; }
 .tweet-header { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; }
-.tweet-author { font-weight: bold; font-size: 0.95rem; cursor: pointer; }
+.tweet-author { font-weight: bold; font-size: 0.95rem; cursor: pointer; color: var(--x-text-main); }
 .tweet-author:hover { text-decoration: underline; }
 .tweet-handle { color: var(--x-text-gray); font-size: 0.85rem; }
-.tweet-content { font-size: 0.95rem; line-height: 1.5; word-wrap: break-word; }
+.tweet-content { font-size: 0.95rem; line-height: 1.5; word-wrap: break-word; color: var(--x-text-main); }
 
-/* 🌟 全屏弹窗样式 (Profile Modal) */
+/* 弹窗 */
 .modal-backdrop {
   position: fixed; top: 0; bottom: 0; left: 0; right: 0;
   background: rgba(0, 0, 0, 0.4); display: flex; align-items: center; justify-content: center;
@@ -189,8 +232,8 @@ const openUserProfile = async (targetUsername) => {
 }
 .modal-header { padding: 30px 24px 16px 24px; text-align: center; border-bottom: 1px solid var(--x-border); }
 .modal-avatar-big {
-  width: 70px; height: 70px; background: #eff3f4; border-radius: 50%; font-size: 2.5rem;
-  display: flex; align-items: center; justify-content: center; margin: 0 auto 12px auto;
+  width: 70px; height: 70px; background: #ffffff; border: 1px solid var(--x-border); border-radius: 50%; font-size: 2.5rem;
+  display: flex; align-items: center; justify-content: center; margin: 0 auto 12px auto; overflow: hidden;
 }
 .modal-nickname { margin: 0; font-size: 1.25rem; font-weight: 800; }
 .modal-handle { margin: 4px 0 0 0; color: var(--x-text-gray); font-size: 0.9rem; }
@@ -198,7 +241,7 @@ const openUserProfile = async (targetUsername) => {
 .modal-body { flex: 1; overflow-y: auto; padding: 16px 24px; }
 .modal-tab-title { font-size: 1rem; font-weight: 800; border-bottom: 2px solid var(--x-blue); padding-bottom: 6px; margin: 0 0 12px 0; display: inline-block;}
 .no-posts-hint { text-align: center; color: var(--x-text-gray); font-size: 0.9rem; padding: 24px 0; }
-.modal-tweet { padding: 12px 0; border-bottom: 1px solid var(--x-border); }
+.modal-tweet { padding: 12px 0; border-bottom: 1px solid var(--x-border); text-align: left; }
 .modal-tweet-time { font-size: 0.8rem; color: var(--x-text-gray); margin-bottom: 4px; }
 .modal-tweet-content { font-size: 0.95rem; line-height: 1.4; word-wrap: break-word;}
 </style>

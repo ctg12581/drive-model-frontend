@@ -103,8 +103,10 @@ const fetchProfile = async () => {
     const res = await fetch(`${API_BASE}/auth/profile/${authStore.username}`)
     const data = await res.json()
     if (res.ok) {
-      profileForm.nickname = data.nickname || authStore.username // 无昵称时默认显示用户名
+      profileForm.nickname = data.nickname || authStore.username
       profileForm.avatar_url = data.avatar || '👤'
+      // 💡 核心升级：拉取成功后，立刻写入全局 Pinia 状态，完成全站同步！
+      authStore.updateProfileState(profileForm.nickname, profileForm.avatar_url)
     }
   } catch (err) {
     console.error('获取个人资料失败', err)
@@ -138,7 +140,7 @@ const handleSubmit = async () => {
   }
 }
 
-// 提交个人名片更新（对接后端 POST /auth/profile）
+// 提交个人资料修改
 const updateProfile = async () => {
   try {
     const res = await fetch(`${API_BASE}/auth/profile`, {
@@ -155,7 +157,8 @@ const updateProfile = async () => {
     const data = await res.json()
     if (res.ok) {
       alert(data.message || '名片更新成功！')
-      await fetchProfile() // 刷新本地状态
+      // 💡 核心升级：更新成功后，立刻写入全局 Pinia 状态，全站瞬间生效！
+      authStore.updateProfileState(profileForm.nickname.trim(), profileForm.avatar_url.trim())
     } else {
       alert(data.detail || '更新失败')
     }
