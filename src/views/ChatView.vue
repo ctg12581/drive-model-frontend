@@ -181,6 +181,8 @@ const addFriend = async () => {
   }
 }
 
+import { formatLocalTime } from '../utils/date' // 1. 导入工具
+
 // 3. 选中联系人：加载历史双向消息记录
 const selectContact = async (friend) => {
   selectedContact.value = friend
