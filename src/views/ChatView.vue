@@ -194,8 +194,13 @@ const selectContact = async (friend) => {
     })
     const data = await res.json()
     if (res.ok) {
-      // 压入双向的历史消息
-      messages.push(...data.history)
+      // 💡 修改这里：使用 map 循环，为每一条历史记录的 time 属性进行时区转换
+      const localizedHistory = data.history.map(msg => ({
+        ...msg,
+        time: formatLocalTime(msg.time) // 👈 在这里调用导入的工具函数进行转换
+      }))
+      
+      messages.push(...localizedHistory)
       scrollToBottom()
     }
   } catch {
