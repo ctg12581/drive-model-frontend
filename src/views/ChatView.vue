@@ -72,6 +72,7 @@
               <span class="header-status">@{{ selectedContact }} · {{ chatStore.connected ? '在线' : '离线' }}</span>
             </div>
           </div>
+          <button v-if="!connected" @click="connectChat" class="btn-reconnect">重连</button>
         </div>
 
         <!-- 对话消息池 -->
@@ -87,13 +88,11 @@
                 <span v-if="msg.self" :class="['read-status', { 'status-read': msg.is_read }]">
                   {{ msg.is_read ? '已读' : '未读' }}
                 </span>
-                <span v-if="msg.self && msg.id" class="btn-recall" @click="handleRecall(msg.id, idx)">
-                  撤回
-                </span>
+                <!-- 💡 核心修改：消息底部彻底移除了常驻的“撤回”链接，使气泡保持极度纯净 -->
                 <span class="msg-time">{{ msg.time }}</span>
               </div>
 
-              <!-- Telegram 风格气泡操作菜单 -->
+              <!-- Telegram 风格高级蓝黑气泡操作菜单 (撤回选项仅在这里显示) -->
               <div v-if="activeMenuIndex === idx" class="telegram-menu" @click.stop>
                 <button class="menu-item" @click="handleCopy(msg.text)">
                   <svg viewBox="0 0 24 24" class="menu-icon"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg>
@@ -107,7 +106,7 @@
               </div>
             </div>
             
-            <!-- 撤回系统提示 -->
+            <!-- 撤回灰色系统提示 -->
             <div v-else class="sys-notice">{{ msg.text }}</div>
           </div>
         </div>
@@ -121,6 +120,7 @@
               <svg viewBox="0 0 24 24" class="svg-inline" style="color: var(--x-text-gray);"><path d="M19.75 2H4.25C3.01 2 2 3.01 2 4.25v15.5C2 20.99 3.01 22 4.25 22h15.5c1.24 0 2.25-1.01 2.25-2.25V4.25C22 3.01 20.99 2 19.75 2zM4.25 3.5h15.5c.41 0 .75.34.75.75v10.12l-3.21-3.21c-.29-.29-.77-.29-1.06 0l-3.87 3.87-2.31-2.31a.75.75 0 00-1.06 0L3.5 16.5V4.25c0-.41.34-.75.75-.75zM3.5 18.62l5.03-5.03 2.84 2.84c.29.29.77.29 1.06 0l3.34-3.34 3.77 3.77V19.75c0 .41-.34.75-.75.75H4.25c-.41 0-.75-.34-.75-.75v-1.13zM8.5 11c1.38 0 2.5-1.12 2.5-2.5S9.88 6 8.5 6 6 7.12 6 8.5 7.12 11 8.5 11zm0-3.5c.55 0 1 .45 1 1s-.45 1-1 1-1-.45-1-1 .45-1 1-1z"/></svg>
             </button>
 
+            <!-- 绑定发送逻辑 -->
             <input type="text" v-model="messageInput" placeholder="开始撰写私信..." @keyup.enter="sendMessage" :disabled="!chatStore.connected">
             <button @click="sendMessage" class="btn-send" :disabled="!messageInput.trim() && !chatStore.connected">
               <svg viewBox="0 0 24 24" class="svg-inline"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
@@ -166,7 +166,7 @@ import { formatLocalTime } from '../utils/date'
 import { apiFetch } from '../utils/api'
 
 const authStore = useAuthStore()
-const chatStore = useChatStore() // 激活常驻服务
+const chatStore = useChatStore()
 const showAddModal = ref(false)
 const newFriendUsername = ref('')
 
@@ -174,12 +174,14 @@ const friends = ref(chatStore.cachedFriends)
 const selectedContact = ref(chatStore.activeContact)
 const messageInput = ref('')
 
-// 路由解耦：让消息变量直接共享绑定全局活性会话流
 const messages = computed(() => chatStore.activeMessages)
 
 const fileInput = ref(null)
 const activeProfile = ref(null)
 const activeMenuIndex = ref(null)
+
+let titleInterval = null
+const originalTitle = document.title || "DRIVE Space"
 
 const selectedContactProfile = computed(() => {
   return friends.value.find(f => f.username === selectedContact.value)
@@ -191,7 +193,6 @@ watch(selectedContact, (newVal) => {
 
 onMounted(() => {
   fetchFriends()
-  // 💡 核心修复：移除了残留的 connectChat()。由于全局连接已由 App.vue 负责，这里绝不再发生 ReferenceError 崩溃！
   if (selectedContact.value) {
     selectContact(selectedContact.value)
   }
@@ -232,20 +233,18 @@ const handleRecall = (messageId, index) => {
     return
   }
 
-  // 调用全局通道发送
   chatStore.sendWebSocketPayload({
     type: "recall",
     to: selectedContact.value,
     message_id: messageId
   })
 
-  // 修改全局流
   chatStore.activeMessages.splice(index, 1, {
     system: true,
     text: '你撤回了一条消息'
   })
 
-  chatStore.updateLastMessageState(selectedContact.value, '你撤回了一条消息', true, '', true)
+  updateLastMessage(selectedContact.value, '你撤回了一条消息', true, '', true)
   chatStore.setHistory(selectedContact.value, [...chatStore.activeMessages])
 }
 
@@ -329,7 +328,6 @@ const selectContact = async (friendUsername) => {
     chatStore.setFriends(friends.value)
   }
 
-  // 调用全局通道发送已读包
   chatStore.sendWebSocketPayload({ type: "read", to: friendUsername })
 
   try {
@@ -349,22 +347,131 @@ const selectContact = async (friendUsername) => {
   }
 }
 
-// 💡 彻底修复的 sendMessage（纯前端推送缓存，不包含阻碍可见性的 nextTick 拉取任务）
+const connectChat = () => {
+  if (!authStore.username) return
+  if (ws) ws.close()
+  
+  ws = new WebSocket(`${WS_BASE}/chat/ws/${authStore.username}`)
+  
+  ws.onopen = () => {
+    connected.value = true
+    if (selectedContact.value) {
+      ws.send(JSON.stringify({ type: "read", to: selectedContact.value }))
+    }
+  }
+
+  ws.onmessage = (event) => {
+    const data = JSON.parse(event.data)
+    playNotificationSound()
+
+    if (data.type === 'read') {
+      if (selectedContact.value === data.from) {
+        messages.forEach(msg => {
+          if (msg.self) {
+            msg.is_read = true
+          }
+        })
+        chatStore.setHistory(selectedContact.value, [...messages])
+      }
+      return
+    }
+
+    if (data.type === 'recall') {
+      const recalledId = data.message_id
+      const msgIndex = messages.findIndex(m => m.id === recalledId)
+      if (msgIndex !== -1) {
+        messages.splice(msgIndex, 1, {
+          system: true,
+          text: '对方撤回了一条消息'
+        })
+        chatStore.setHistory(selectedContact.value, [...messages])
+        updateLastMessage(data.from, '对方撤回了一条消息', false, '', true)
+      }
+      return
+    }
+
+    const isMsg = !data.type || data.type === 'msg'
+    if (isMsg) {
+      if (selectedContact.value === data.from) {
+        messages.push({
+          id: data.id,
+          from: data.from,
+          text: data.message,
+          time: getCurrentTimeLabel(),
+          self: false,
+          system: false,
+          is_read: true 
+        })
+        scrollToBottom()
+        chatStore.setHistory(selectedContact.value, [...messages])
+
+        updateLastMessage(data.from, data.message, false)
+
+        ws.send(JSON.stringify({ type: "read", to: data.from }))
+      } else {
+        const friend = friends.value.find(f => f.username === data.from)
+        if (friend) {
+          friend.unread++
+          chatStore.setFriends(friends.value)
+        }
+        triggerTitleFlash()
+        updateLastMessage(data.from, data.message, false)
+      }
+    }
+  }
+
+  ws.onclose = () => {
+    connected.value = false
+  }
+}
+
+const updateLastMessage = (friendUsername, text, isSelf = false, timeStr = '', isSystemNotice = false) => {
+  const friend = friends.value.find(f => f.username === friendUsername)
+  if (!friend) return
+
+  let displayMsg = text
+  if (text.startsWith('data:image/')) {
+    displayMsg = '[图片]'
+  } else if (!isSystemNotice && text.length > 15) {
+    displayMsg = text.substring(0, 15) + '...'
+  }
+
+  if (isSystemNotice) {
+    friend.last_message = displayMsg
+  } else {
+    const prefix = isSelf ? '我' : friend.nickname
+    friend.last_message = `${prefix}: ${displayMsg}`
+  }
+
+  let timeLabel = ""
+  if (timeStr) {
+    timeLabel = timeStr.split(' ')[1] || ""
+  } else {
+    const now = new Date()
+    timeLabel = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`
+  }
+  friend.last_message_time = timeLabel
+  
+  friends.value = [...friends.value]
+  chatStore.setFriends(friends.value)
+}
+
+// 💡 彻底修复的发送消息函数（删除了多余的 nextTick 竞争拉取逻辑）
 const sendMessage = () => {
   if (!chatStore.connected || !selectedContact.value) return
   const text = messageInput.value.trim()
   if (!text) return
 
-  // 调用全局常驻通道安全发送
+  // 1. 发送 WebSocket 消息
   chatStore.sendWebSocketPayload({
     type: "msg",
     to: selectedContact.value,
     message: text
   })
   
-  // 💡 直接追加到本地，id 为 null（防止网络竞争覆盖。消息100%瞬间留在屏幕上，绝不消失）
+  // 2. 本地直接、无缝追加到渲染数组中
   chatStore.activeMessages.push({ 
-    id: null,
+    id: null, // 发送瞬间暂无自增ID
     from: authStore.username, 
     text: text, 
     time: getCurrentTimeLabel(), 
@@ -373,21 +480,23 @@ const sendMessage = () => {
     is_read: false 
   })
   
-  // 实时同步刷新左侧最新一条状态
+  // 3. 实时刷新左侧最新一条状态为“我：内容”
   updateLastMessage(selectedContact.value, text, true)
   
-  // 实时写入内存，防止切路由数据倒流
+  // 4. 同步写入内存，保证切换 Tab 不流失
   chatStore.setHistory(selectedContact.value, [...chatStore.activeMessages])
 
+  // 💡 5. 瞬间清空输入框，100% 成功！
   messageInput.value = ''
   scrollToBottom()
 }
 
+// 💡 异步加载他人公开资料：这里必须统一修改为 apiFetch！
 const openUserProfile = async (targetUsername) => {
   try {
     const [profileRes, postsRes] = await Promise.all([
-      fetch(`${API_BASE}/auth/profile/${targetUsername}`),
-      fetch(`${API_BASE}/moments/user/${targetUsername}`)
+      apiFetch(`/auth/profile/${targetUsername}`),
+      apiFetch(`/moments/user/${targetUsername}`)
     ])
     if (profileRes.ok && postsRes.ok) {
       const user = await profileRes.json()
@@ -396,8 +505,11 @@ const openUserProfile = async (targetUsername) => {
         user: user,
         posts: userPosts.moments
       }
+    } else {
+      alert('加载用户数据失败')
     }
-  } catch {
+  } catch (err) {
+    console.error('加载主页异常:', err)
     alert('无法加载该用户的主页')
   }
 }
@@ -406,7 +518,7 @@ const triggerImageSelect = () => {
   if (fileInput.value) { fileInput.value.click() }
 }
 
-// 💡 同样彻底修复的 handleImageUpload，抹除 nextTick 耗时重拉
+// 💡 同样彻底修复的发图函数：删除冗余的 nextTick 竞争拉取逻辑
 const handleImageUpload = (event) => {
   const file = event.target.files[0]
   if (!file) return
@@ -421,14 +533,14 @@ const handleImageUpload = (event) => {
   reader.onload = () => {
     const base64Data = reader.result
     
-    // 全局通道发图
+    // 发图
     chatStore.sendWebSocketPayload({
       type: "msg",
       to: selectedContact.value,
       message: base64Data
     })
     
-    // 💡 本地直接追加
+    // 本地直接压入
     chatStore.activeMessages.push({
       id: null,
       from: authStore.username,
@@ -439,10 +551,7 @@ const handleImageUpload = (event) => {
       is_read: false
     })
     
-    // 侧边栏摘要更新
     updateLastMessage(selectedContact.value, base64Data, true)
-    
-    // 写入内存
     chatStore.setHistory(selectedContact.value, [...chatStore.activeMessages])
 
     scrollToBottom()
