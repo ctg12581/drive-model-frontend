@@ -1,4 +1,4 @@
-<!-- src/views/ChatView.vue (除 <style> 之外的完整最新代码) -->
+<!-- src/views/ChatView.vue (除了 <style> 外的完整最新代码) -->
 <template>
   <div class="x-dm-layout">
     
@@ -78,6 +78,8 @@
         <div class="chat-body" id="chatFlow">
           <div v-for="(msg, idx) in messages" :key="idx" 
                :class="['message-row', msg.system ? 'sys-row' : (msg.self ? 'self-row' : 'peer-row')]">
+            
+            <!-- 气泡主体 -->
             <div v-if="!msg.system" class="msg-bubble" @click.stop="toggleMessageMenu(idx)">
               <img v-if="isImage(msg.text)" :src="msg.text" class="chat-img" @load="scrollToBottom" />
               <span v-else>{{ msg.text }}</span>
@@ -163,7 +165,7 @@
 <script setup>
 import { ref, onMounted, onUnmounted, nextTick, computed, watch } from 'vue'
 import { useAuthStore } from '../store/auth'
-import { useChatStore } from '../store/chat'
+import { useChatStore } from '../store/chat'  // 💡 全局常驻
 import { formatLocalTime } from '../utils/date'
 import { apiFetch } from '../utils/api'
 
@@ -197,15 +199,15 @@ watch(selectedContact, (newVal) => {
 
 onMounted(() => {
   fetchFriends()
-  // 💡 自动秒开移除：由于用户希望每次进来都是列表，所以这里不再调用自动 select 逻辑
+  // 💡 彻底修复的 onMounted：完全删除 connectChat() 运行时崩溃漏洞！
   window.addEventListener('click', closeAllMenus)
 })
 
 onUnmounted(() => {
-  // 💡 核心修复：手动、显式调用 Pinia 方法将活跃联系人重置为 null 写入缓存！
-  // 绕过组件卸载时 Vue3 自动销毁监听器（Watcher）的限制，确保下次进来绝对是联系人列表。
+  // 💡 核心修改：当离开聊天页面时，不仅清空 selectedContact，
+  // 还要手动通知 Pinia 强行将全局活性活跃窗口设为 null，以便下次进入时 100% 优先展示最清纯的联系人信箱列表！
+  selectedContact.value = null
   chatStore.setActiveContact(null)
-  
   window.removeEventListener('click', closeAllMenus)
 })
 
@@ -266,9 +268,8 @@ const handleDeleteFriend = async (friendUsername) => {
     
     if (res.ok) {
       activeProfile.value = null   
-      selectedContact.value = null // 自动退出并回弹
+      selectedContact.value = null // 自动退出
       fetchFriends()               // 静默刷新列表
-      
     } else {
       alert('解除好友失败')
     }
@@ -278,47 +279,10 @@ const handleDeleteFriend = async (friendUsername) => {
   }
 }
 
+// 💡 核心升级 B：直接让页面调用全局仓库的 fetchFriends() 写入并共享状态，消灭前端未读重置Bug
 const fetchFriends = async () => {
-  try {
-    const res = await apiFetch('/chat/friends')
-    const data = await res.json()
-    if (res.ok) {
-      const friendsWithUnread = data.friends.map(f => {
-        const existing = friends.value.find(cf => cf.username === f.username)
-        
-        let finalLastMsg = f.last_message || ''
-        let finalLastTime = f.last_message_time || ''
-        
-        if (!finalLastMsg) {
-          const history = chatStore.cachedHistory[f.username] || []
-          if (history.length > 0) {
-            const last = history[history.length - 1]
-            if (!last.system) {
-              const prefix = last.self ? '我' : (f.nickname || f.username)
-              let text = last.text
-              if (text.startsWith('data:image/')) text = '[图片]'
-              else if (text.length > 15) text = text.substring(0, 15) + '...'
-              finalLastMsg = `${prefix}: ${text}`
-              finalLastTime = last.time.split(' ')[1] || ''
-            } else {
-              finalLastMsg = last.text
-            }
-          }
-        }
-
-        return {
-          ...f,
-          unread: existing ? existing.unread : 0,
-          last_message: finalLastMsg,
-          last_message_time: finalLastTime
-        }
-      })
-      chatStore.setFriends(friendsWithUnread)
-      friends.value = friendsWithUnread
-    }
-  } catch (err) {
-    console.error('获取联系人列表失败:', err)
-  }
+  await chatStore.fetchFriends()
+  friends.value = chatStore.cachedFriends
 }
 
 const addFriend = async () => {
@@ -525,6 +489,7 @@ const getCurrentTimeLabel = () => {
   return `${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`
 }
 </script>
+
 
 
 

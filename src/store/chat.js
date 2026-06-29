@@ -3,6 +3,7 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { useAuthStore } from './auth'
 import { formatLocalTime } from '../utils/date'
+import { apiFetch } from '../utils/api'
 
 export const useChatStore = defineStore('chat', () => {
   const authStore = useAuthStore()
@@ -11,17 +12,18 @@ export const useChatStore = defineStore('chat', () => {
   const cachedHistory = ref(JSON.parse(localStorage.getItem('cached_history') || '{}'))
   const activeContact = ref(localStorage.getItem('active_contact') || null)
 
-  // 💡 1. 声明全局唯一的常驻 WebSocket 实例
+  // 全局唯一的常驻 WebSocket 实例
   const ws = ref(null)
   const connected = ref(false)
-  
-  // 💡 2. 全局活跃对话消息流（切换 Tab 不会被清空，保障 0ms 秒开）
   const activeMessages = ref([])
 
-  // 💡 3. 计算属性：实时汇总全站所有好友的未读消息总和
+  // 全站未读消息总和
   const totalUnreadCount = computed(() => {
     return cachedFriends.value.reduce((sum, friend) => sum + (friend.unread || 0), 0)
   })
+
+  // 待审批的好友申请数量
+  const pendingRequestsCount = ref(0)
 
   function setFriends(friends) {
     cachedFriends.value = friends
@@ -42,15 +44,26 @@ export const useChatStore = defineStore('chat', () => {
     }
   }
 
-  const pendingRequestsCount = ref(0)
+  // 💡 核心升级 A：将获取好友列表移入全局，直接以数据库计算的 unread 值为绝对基准！
+  async function fetchFriendsGlobal() {
+    if (!authStore.isLoggedIn) return
+    try {
+      const res = await apiFetch('/chat/friends')
+      const data = await res.json()
+      if (res.ok) {
+        // 直接使用后端数据库计算好、100% 绝对精准的未读数，彻底消灭前端计算覆写导致的消失Bug！
+        setFriends(data.friends)
+      }
+    } catch (err) {
+      console.error('全局获取好友列表异常:', err)
+    }
+  }
 
-  // 💡 新增：全局定时拉取待批准申请数的守护进程
+  // 获取待审批好友申请数
   async function fetchPendingRequestsCount() {
     if (!authStore.isLoggedIn) return
     try {
-      const res = await fetch(`${import.meta.env.VITE_API_BASE || 'http://127.0.0.1:3000'}/chat/friend-requests/pending`, {
-        headers: { 'Authorization': `Bearer ${authStore.token}` }
-      })
+      const res = await apiFetch('/chat/friend-requests/pending')
       const data = await res.json()
       if (res.ok) {
         pendingRequestsCount.value = data.requests.length
@@ -60,11 +73,9 @@ export const useChatStore = defineStore('chat', () => {
     }
   }
 
-  // 💡 4. 核心：全局常驻 WebSocket 守护进程启动逻辑
+  // 全局常驻 WebSocket
   function connectWebSocket() {
     const WS_BASE = import.meta.env.VITE_WS_BASE || 'ws://127.0.0.1:3000'
-    
-    // 如果未登录，或已经存在连接，则跳过，防止重复建立连接
     if (!authStore.username || ws.value) return
 
     ws.value = new WebSocket(`${WS_BASE}/chat/ws/${authStore.username}`)
@@ -72,9 +83,10 @@ export const useChatStore = defineStore('chat', () => {
     ws.value.onopen = () => {
       connected.value = true
       fetchPendingRequestsCount()
-      // 开启每 20 秒一次的待批准通知静默轮询
+      // 连接成功后，也静默拉取一次最新好友列表与未读数
+      fetchFriends()
+      // 每 20 秒一次的待批准通知长轮询
       setInterval(fetchPendingRequestsCount, 20000)
-      // 如果当前正开着某个人的对话框，自动为其向后端补发已读回执
       if (activeContact.value) {
         sendWebSocketPayload({ type: "read", to: activeContact.value })
       }
@@ -82,11 +94,9 @@ export const useChatStore = defineStore('chat', () => {
 
     ws.value.onmessage = (event) => {
       const data = JSON.parse(event.data)
-      
-      // 💡 无论在哪个页面，收到消息立即播放清脆音效！
       playNotificationSound()
 
-      // 情况 A：收到实时已读回执
+      // 1. 已读回执
       if (data.type === 'read') {
         if (activeContact.value === data.from) {
           activeMessages.value.forEach(msg => {
@@ -97,11 +107,9 @@ export const useChatStore = defineStore('chat', () => {
         return
       }
 
-      // 情况 B：收到实时撤回回执
+      // 2. 撤回回执
       if (data.type === 'recall') {
         const recalledId = data.message_id
-        
-        // 如果当前正开着和 TA 的对话框，实时在会话流中撤回该消息
         if (activeContact.value === data.from) {
           const msgIndex = activeMessages.value.findIndex(m => m.id === recalledId)
           if (msgIndex !== -1) {
@@ -123,11 +131,10 @@ export const useChatStore = defineStore('chat', () => {
         return
       }
 
-      // 情况 C：正常的普通消息包
+      // 3. 普通实时消息
       const isMsg = !data.type || data.type === 'msg'
       if (isMsg) {
         if (activeContact.value === data.from) {
-          // 如果用户当前正好在跟发送人热聊中：直接塞入活跃会话流并自动已读
           activeMessages.value.push({
             id: data.id,
             from: data.from,
@@ -140,11 +147,15 @@ export const useChatStore = defineStore('chat', () => {
           setHistory(activeContact.value, [...activeMessages.value])
           sendWebSocketPayload({ type: "read", to: data.from })
         } else {
-          // 💡 核心：如果用户没有开当前对话框（无论是在发动态、改名片还是跟别人聊天）：其对应的未读数自动 +1
+          // 如果没开对话框
           const friend = cachedFriends.value.find(f => f.username === data.from)
           if (friend) {
             friend.unread = (friend.unread || 0) + 1
-            setFriends([...cachedFriends.value]) // 写入全局状态，触发导航栏数字红点实时改变
+            setFriends([...cachedFriends.value])
+          } else {
+            // 💡 极其重要：如果在当前联系人列表中找不到发送人（说明是新加的好友），
+            // 立刻在后台静默重拉好友列表，保证新好友能够瞬间出现并弹红点！
+            fetchFriends()
           }
         }
         updateLastMessageState(data.from, data.message, false)
@@ -154,17 +165,12 @@ export const useChatStore = defineStore('chat', () => {
     ws.value.onclose = () => {
       connected.value = false
       ws.value = null
-      
-      // 💡 核心机制：如果用户依然处于登录状态，但在后台意外断开，则每隔 5 秒静默自动重连，无需用户手动点击！
       if (authStore.isLoggedIn) {
-        setTimeout(() => {
-          connectWebSocket()
-        }, 5000)
+        setTimeout(connectWebSocket, 5000)
       }
     }
   }
 
-  // 断开全局连接 (退出登录时调用)
   function disconnectWebSocket() {
     if (ws.value) {
       ws.value.close()
@@ -173,7 +179,6 @@ export const useChatStore = defineStore('chat', () => {
     }
   }
 
-  // 统一通过常驻 WebSocket 实例向后端发送数据
   function sendWebSocketPayload(payload) {
     if (ws.value && connected.value) {
       ws.value.send(JSON.stringify(payload))
@@ -226,7 +231,7 @@ export const useChatStore = defineStore('chat', () => {
       }
       playSynthPing(audioCtx)
     } catch (err) {
-      console.warn('播放音效被拦截:', err)
+      console.warn('播放被拦:', err)
     }
   }
 
@@ -250,8 +255,7 @@ export const useChatStore = defineStore('chat', () => {
   }
 
   return { 
-    cachedFriends, cachedHistory, activeContact, ws, connected, activeMessages, totalUnreadCount,
-    setFriends, setHistory, setActiveContact, connectWebSocket, disconnectWebSocket, sendWebSocketPayload, updateLastMessageState,
-    pendingRequestsCount, fetchPendingRequestsCount
+    cachedFriends, cachedHistory, activeContact, ws, connected, activeMessages, totalUnreadCount, pendingRequestsCount,
+    setFriends, setHistory, setActiveContact, connectWebSocket, disconnectWebSocket, sendWebSocketPayload, updateLastMessageState, fetchFriends
   }
 })
