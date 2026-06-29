@@ -134,7 +134,7 @@
     <div v-if="activeProfile" class="modal-backdrop" @click.self="activeProfile = null">
       <div class="modal-card">
         <button class="modal-close" @click="activeProfile = null">✕</button>
-        <div class="modal-header">
+ <div class="modal-header">
           <div class="modal-avatar-big">
             <img v-if="isUrl(activeProfile.user.avatar)" :src="activeProfile.user.avatar" class="avatar-img-el" />
             <span v-else-if="activeProfile.user.avatar && activeProfile.user.avatar !== '👤'">{{ activeProfile.user.avatar }}</span>
@@ -142,6 +142,13 @@
           </div>
           <h2 class="modal-nickname">{{ activeProfile.user.nickname }}</h2>
           <p class="modal-handle">@{{ activeProfile.user.username }}</p>
+
+          <!-- 💡 新增：删除好友控制（如果是当前好友，且不是我自己，则渲染删除按钮） -->
+          <div v-if="isCurrentFriend && activeProfile.user.username !== authStore.username" style="margin-top: 15px;">
+            <button @click="handleDeleteFriend(activeProfile.user.username)" class="btn-profile-delete">
+              解除好友关系
+            </button>
+          </div>
         </div>
         <div class="modal-body">
           <h3 class="modal-tab-title">TA 的动态 ({{ activeProfile.posts.length }})</h3>
@@ -582,6 +589,38 @@ const getCurrentTimeLabel = () => {
   const now = new Date()
   return `${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`
 }
+
+// 💡 新增计算属性：判断弹窗中查看的这个人，当前是否已经是我的好友
+const isCurrentFriend = computed(() => {
+  if (!activeProfile.value) return false
+  return friends.value.some(f => f.username === activeProfile.value.user.username)
+})
+
+// 💡 新增方法：向后端发送删除好友请求（双向解除关系 ＋ 彻底清空聊天历史）
+const handleDeleteFriend = async (friendUsername) => {
+  if (!window.confirm(`⚠️ 警告：确定要删除好友 @${friendUsername} 吗？这将会双向解除你们的好友关系，并彻底清空你们彼此之间的所有聊天记录！`)) {
+    return
+  }
+  try {
+    const res = await apiFetch('/chat/friend/delete', {
+      method: 'POST',
+      body: JSON.stringify({ friend_username: friendUsername })
+    })
+    const data = await res.json()
+    
+    if (res.ok) {
+      alert(data.message)
+      activeProfile.value = null   
+      selectedContact.value = null
+      fetchFriends()             
+    } else {
+      alert(data.detail || '删除好友失败')
+    }
+  } catch (err) {
+    console.error(err)
+    alert('请求失败')
+  }
+}
 </script>
 
 <style scoped>
@@ -841,5 +880,22 @@ const getCurrentTimeLabel = () => {
   .contacts-sidebar { width: 280px; }
   .chat-main { flex: 1; }
   .btn-back { display: none !important; }
+}
+
+.btn-profile-delete {
+  background: transparent;
+  color: #ef4444;
+  border: 1px solid #fca5a5;
+  font-weight: bold;
+  font-size: 0.85rem;
+  padding: 0 16px;
+  height: 32px;
+  border-radius: 9999px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.btn-profile-delete:hover {
+  background: #fee2e2;
+  border-color: #ef4444;
 }
 </style>
