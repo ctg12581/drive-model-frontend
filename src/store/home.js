@@ -1,4 +1,4 @@
-// src/store/moments.js
+// src/store/home.js
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 

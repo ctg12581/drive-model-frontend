@@ -1,31 +1,32 @@
+// src/router/index.js
 import { createRouter, createWebHashHistory } from 'vue-router'
 import { useAuthStore } from '../store/auth'
 import AuthView from '../views/AuthView.vue'
-import DriveView from '../views/DriveView.vue'
+import HomeView from '../views/HomeView.vue'
+import SearchView from '../views/SearchView.vue'
+import NotificationsView from '../views/NotificationsView.vue'
 import ChatView from '../views/ChatView.vue'
-import MomentsView from '../views/MomentsView.vue'
 
 const routes = [
-  { path: '/', redirect: '/moments' },
+  { path: '/', redirect: '/home' },
   { path: '/auth', name: 'Auth', component: AuthView },
-  // meta.requiresAuth 标记了哪些页面必须登录才能进入
-  // { path: '/drive', name: 'Drive', component: DriveView, meta: { requiresAuth: true } },
-  { path: '/chat', name: 'Chat', component: ChatView, meta: { requiresAuth: true } },
-  { path: '/moments', name: 'Moments', component: MomentsView, meta: { requiresAuth: true } }
+  { path: '/home', name: 'Home', component: HomeView, meta: { requiresAuth: true } },
+  { path: '/search', name: 'Search', component: SearchView, meta: { requiresAuth: true } },
+  { path: '/notifications', name: 'Notifications', component: NotificationsView, meta: { requiresAuth: true } },
+  { path: '/chat', name: 'Chat', component: ChatView, meta: { requiresAuth: true } }
 ]
 
 const router = createRouter({
-  history: createWebHashHistory(), // 使用 Hash 模式，在部署 GitHub Pages 时免去服务端重定向配置的麻烦
+  history: createWebHashHistory(),
   routes
 })
 
-// 路由守卫：在页面跳转前执行鉴权拦截
 router.beforeEach((to, from, next) => {
   const authStore = useAuthStore()
   if (to.meta.requiresAuth && !authStore.isLoggedIn) {
-    next('/auth') // 拦截并重定向
+    next('/auth')
   } else {
-    next() // 正常放行
+    next()
   }
 })
 

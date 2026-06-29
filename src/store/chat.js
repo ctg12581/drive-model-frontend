@@ -42,6 +42,24 @@ export const useChatStore = defineStore('chat', () => {
     }
   }
 
+  const pendingRequestsCount = ref(0)
+
+  // 💡 新增：全局定时拉取待批准申请数的守护进程
+  async function fetchPendingRequestsCount() {
+    if (!authStore.isLoggedIn) return
+    try {
+      const res = await fetch(`${import.meta.env.VITE_API_BASE || 'http://127.0.0.1:3000'}/chat/friend-requests/pending`, {
+        headers: { 'Authorization': `Bearer ${authStore.token}` }
+      })
+      const data = await res.json()
+      if (res.ok) {
+        pendingRequestsCount.value = data.requests.length
+      }
+    } catch {
+      console.error('获取通知未读数异常')
+    }
+  }
+
   // 💡 4. 核心：全局常驻 WebSocket 守护进程启动逻辑
   function connectWebSocket() {
     const WS_BASE = import.meta.env.VITE_WS_BASE || 'ws://127.0.0.1:3000'
@@ -53,6 +71,9 @@ export const useChatStore = defineStore('chat', () => {
 
     ws.value.onopen = () => {
       connected.value = true
+      fetchPendingRequestsCount()
+      // 开启每 20 秒一次的待批准通知静默轮询
+      setInterval(fetchPendingRequestsCount, 20000)
       // 如果当前正开着某个人的对话框，自动为其向后端补发已读回执
       if (activeContact.value) {
         sendWebSocketPayload({ type: "read", to: activeContact.value })
@@ -230,6 +251,7 @@ export const useChatStore = defineStore('chat', () => {
 
   return { 
     cachedFriends, cachedHistory, activeContact, ws, connected, activeMessages, totalUnreadCount,
-    setFriends, setHistory, setActiveContact, connectWebSocket, disconnectWebSocket, sendWebSocketPayload, updateLastMessageState
+    setFriends, setHistory, setActiveContact, connectWebSocket, disconnectWebSocket, sendWebSocketPayload, updateLastMessageState,
+    pendingRequestsCount, fetchPendingRequestsCount
   }
 })
