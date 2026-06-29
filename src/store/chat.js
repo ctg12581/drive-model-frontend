@@ -133,6 +133,13 @@ export const useChatStore = defineStore('chat', () => {
     ws.value.onclose = () => {
       connected.value = false
       ws.value = null
+      
+      // 💡 核心机制：如果用户依然处于登录状态，但在后台意外断开，则每隔 5 秒静默自动重连，无需用户手动点击！
+      if (authStore.isLoggedIn) {
+        setTimeout(() => {
+          connectWebSocket()
+        }, 5000)
+      }
     }
   }
 

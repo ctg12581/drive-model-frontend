@@ -1,18 +1,14 @@
-<!-- src/App.vue -->
+<!-- src/App.vue (除了 <style> 的完整代码) -->
 <template>
   <div class="app-layout">
-    <!-- 1. 移动端顶部固定栏 -->
+    <!-- 1. 移动端顶部固定栏 (💡 彻底删除了右侧登出按钮，保持极简) -->
     <header class="mobile-top-bar">
       <div class="avatar-placeholder">
         <img v-if="isUrl(authStore.avatar)" :src="authStore.avatar" class="avatar-img-el" />
         <span v-else>{{ authStore.avatar }}</span>
       </div>
       <div class="app-logo">𝕏 DRIVE Space</div>
-      <div class="top-action-btn">
-        <button v-if="authStore.isLoggedIn" @click="handleLogout" class="btn-logout-icon">
-          登出
-        </button>
-      </div>
+      <div class="top-action-placeholder" style="width: 32px;"></div> <!-- 用占位符保持居中对称 -->
     </header>
 
     <!-- 2. 核心响应式布局容器 -->
@@ -29,17 +25,16 @@
             <span class="text">动态广场</span>
           </router-link>
 
-          <!-- 实时聊吧 (💡 新增：全站侧边栏未读数红点气泡) -->
+          <!-- 实时聊吧 -->
           <router-link to="/chat" class="sidebar-link" active-class="active">
             <span class="icon">
               <svg viewBox="0 0 24 24" class="svg-icon"><path d="M20 2H4c-1.1 0-1.99.9-1.99 2L2 22l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zM6 9h12v2H6V9zm8 5H6v-2h8v2zm4-6H6V6h12v2z"/></svg>
             </span>
-            <span class="nav-text-container">
-              <span class="text">实时聊吧</span>
-              <span v-if="chatStore.totalUnreadCount > 0" class="global-unread-badge">
-                {{ chatStore.totalUnreadCount }}
-              </span>
-            </span>
+            <span class="text">实时聊吧</span>
+            <!-- 全局红点未读提示 -->
+            <div v-if="chatStore.totalUnreadCount > 0" class="sidebar-unread-badge">
+              {{ chatStore.totalUnreadCount }}
+            </div>
           </router-link>
 
           <!-- 账号设置 -->
@@ -51,7 +46,7 @@
           </router-link>
         </nav>
 
-        <!-- 侧边栏底部个人名片 -->
+        <!-- 侧边栏底部个人名片 (💡 彻底删除了“安全登出”文字按钮) -->
         <div v-if="authStore.isLoggedIn" class="sidebar-profile">
           <div class="profile-avatar">
             <img v-if="isUrl(authStore.avatar)" :src="authStore.avatar" class="avatar-img-el" />
@@ -59,12 +54,12 @@
           </div>
           <div class="profile-info">
             <div class="profile-name">{{ authStore.nickname || authStore.username }}</div>
-            <div class="profile-logout" @click="handleLogout">安全登出</div>
+            <div class="profile-handle" style="font-size: 0.8rem; color: var(--x-text-gray);">@{{ authStore.username }}</div>
           </div>
         </div>
       </aside>
 
-      <!-- 中间主内容区 (路由挂载点) -->
+      <!-- 中间主内容区 -->
       <main class="content-area">
         <router-view />
       </main>
@@ -87,7 +82,7 @@
       </aside>
     </div>
 
-    <!-- 3. 移动端底部固底导航栏 (💡 新增：底栏未读数红点气泡) -->
+    <!-- 3. 移动端底部固底导航栏 -->
     <nav class="mobile-bottom-bar">
       <router-link to="/moments" class="bottom-link" active-class="active">
         <svg viewBox="0 0 24 24" class="svg-icon"><path d="M22 10.51l-4.57-1.12L16.31 4.8c-.28-.68-.81-.68-1.09 0l-1.12 4.59L9.53 10.51c-.68.28-.68.81 0 1.09l4.57 1.12 1.12 4.59c.28.68.81.68 1.09 0l1.12-4.59 4.57-1.12c.68-.28.68-.81 0-1.09zM8.36 17.51l-1.91-.47-.47-1.91c-.12-.48-.48-.48-.6 0l-.47 1.91-1.91.47c-.48.12-.48.48 0 .6l1.91.47.47 1.91c.12.48.48.48.6 0l.47-1.91 1.91-.47c.48-.12.48-.48 0-.6zm3-11.51l-.95-.23-.23-.95c-.06-.24-.24-.24-.3 0l-.23.95-.95.23c-.24.06-.24.24 0 .3l.95.23.23.95c.06.24.24.24.3 0l.23-.95.95-.23c.24-.06.24-.24 0-.3z"/></svg>
@@ -110,11 +105,11 @@
 <script setup>
 import { onMounted, watch } from 'vue'
 import { useAuthStore } from './store/auth'
-import { useChatStore } from './store/chat'  
+import { useChatStore } from './store/chat'
 import { useRouter } from 'vue-router'
 
 const authStore = useAuthStore()
-const chatStore = useChatStore() 
+const chatStore = useChatStore()
 const router = useRouter()
 
 const handleLogout = () => {
@@ -123,14 +118,12 @@ const handleLogout = () => {
   router.push('/auth')
 }
 
-// 💡 5. 全局初始化：只要用户一打开网站且处于登录态，立刻在全站后台激活常驻 WebSocket 守护连接！
 onMounted(() => {
   if (authStore.isLoggedIn) {
     chatStore.connectWebSocket()
   }
 })
 
-// 💡 6. 监控登录态：当在 Auth 页面重新登录成功，自动瞬间在后台开启长连接守护
 watch(() => authStore.isLoggedIn, (loggedIn) => {
   if (loggedIn) {
     chatStore.connectWebSocket()
@@ -144,6 +137,7 @@ const isUrl = (text) => {
   return text.startsWith('http://') || text.startsWith('https://') || text.startsWith('/')
 }
 </script>
+
 
 <style>
 /* 𝕏 全局重置样式（移动端自适应） */

@@ -62,7 +62,7 @@
       <!-- 活动聊天窗口 -->
       <div v-else class="chat-window">
         <!-- 窗口头部 -->
-        <div class="chat-header">
+ <div class="chat-header">
           <div class="chat-header-left">
             <button @click="selectedContact = null" class="btn-back">
               <svg viewBox="0 0 24 24" class="svg-inline"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"/></svg>
@@ -72,7 +72,6 @@
               <span class="header-status">@{{ selectedContact }} · {{ chatStore.connected ? '在线' : '离线' }}</span>
             </div>
           </div>
-          <button v-if="!connected" @click="connectChat" class="btn-reconnect">重连</button>
         </div>
 
         <!-- 对话消息池 -->

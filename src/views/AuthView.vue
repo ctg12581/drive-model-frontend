@@ -41,8 +41,7 @@
       </div>
 
       <!-- 已登录状态：编辑个人资料 -->
-      <div v-else class="success-box">
-        <!-- 💡 瞬间渲染：大头像直接绑定缓存，0 毫秒展示 -->
+  <div v-else class="success-box">
         <div class="avatar-big">{{ profileForm.avatar_url || '👤' }}</div>
         <h2>@{{ authStore.username }}</h2>
         
@@ -51,14 +50,13 @@
           <form @submit.prevent="updateProfile">
             <div class="x-input-group">
               <label class="edit-label">我的昵称</label>
-              <!-- 💡 瞬间渲染：输入框直接双向绑定具有缓存初值的变量 -->
               <input type="text" v-model="profileForm.nickname" placeholder="设置个性昵称" required>
             </div>
             <div class="x-input-group">
               <label class="edit-label">我的头像 (可直接贴入图片地址)</label>
               <input type="text" v-model="profileForm.avatar_url" placeholder="自定义头像(Emoji或图片链接)" required>
             </div>
-            <!-- 快捷推荐精美的社交 Emoji -->
+            <!-- 快捷推荐 Emoji -->
             <div class="emoji-picker">
               <span v-for="emoji in ['🚀','🐱','🦊','🎮','🦄','🐧','🌸','🐼']" :key="emoji" 
                     @click="profileForm.avatar_url = emoji" class="emoji-item">
@@ -67,6 +65,11 @@
             </div>
             <button type="submit" class="x-btn-dark" style="background: var(--x-blue); color: white;">更新个人名片</button>
           </form>
+
+          <!-- 💡 新增：宽幅危险按钮风格的退出当前账号控制 -->
+          <div style="margin-top: 30px; border-top: 1px solid var(--x-border); padding-top: 20px;">
+            <button @click="handleLogout" class="x-btn-danger">退出当前账号</button>
+          </div>
         </div>
       </div>
     </div>
@@ -168,6 +171,13 @@ const updateProfile = async () => {
     console.error(err)
   }
 }
+
+const handleLogout = () => {
+  // 💡 安全登出：切断 WebSocket 常驻连接 + 抹除 Pinia 状态与本地 LocalStorage 缓存
+  chatStore.disconnectWebSocket()
+  authStore.logout()
+  router.push('/auth')
+}
 </script>
 
 
@@ -260,5 +270,22 @@ const updateProfile = async () => {
 }
 .emoji-item:hover {
   transform: scale(1.2);
+}
+
+.x-btn-danger {
+  width: 100%;
+  height: 44px;
+  background: transparent;
+  color: #ef4444;
+  border: 1px solid #fca5a5;
+  border-radius: 9999px;
+  font-weight: bold;
+  font-size: 1rem;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.x-btn-danger:hover {
+  background: #fee2e2;
+  border-color: #ef4444;
 }
 </style>
