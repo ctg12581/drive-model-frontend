@@ -1,9 +1,8 @@
 <!-- src/App.vue -->
 <template>
   <div class="app-layout">
-    <!-- 1. 移动端顶部固定栏 (在屏宽 >= 768px 时，通过 CSS 自动隐藏) -->
+    <!-- 1. 移动端顶部固定栏 -->
     <header class="mobile-top-bar">
-      <!-- 💡 读取全局动态头像 -->
       <div class="avatar-placeholder">
         <img v-if="isUrl(authStore.avatar)" :src="authStore.avatar" class="avatar-img-el" />
         <span v-else>{{ authStore.avatar }}</span>
@@ -22,15 +21,7 @@
       <aside class="sidebar">
         <div class="sidebar-logo">𝕏 DRIVE</div>
         <nav class="sidebar-nav">
-          <!-- DRIVE 评测 -->
-          <!-- <router-link to="/drive" class="sidebar-link" active-class="active">
-            <span class="icon">
-              <svg viewBox="0 0 24 24" class="svg-icon"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-9 14H7v-7h3v7zm4 0h-3V7h3v10zm4 0h-3v-4h3v4z"/></svg>
-            </span>
-            <span class="text">DRIVE 评测</span>
-          </router-link> -->
-          
-          <!-- 动态广场 (新增) -->
+          <!-- 动态广场 -->
           <router-link to="/moments" class="sidebar-link" active-class="active">
             <span class="icon">
               <svg viewBox="0 0 24 24" class="svg-icon"><path d="M22 10.51l-4.57-1.12L16.31 4.8c-.28-.68-.81-.68-1.09 0l-1.12 4.59L9.53 10.51c-.68.28-.68.81 0 1.09l4.57 1.12 1.12 4.59c.28.68.81.68 1.09 0l1.12-4.59 4.57-1.12c.68-.28.68-.81 0-1.09zM8.36 17.51l-1.91-.47-.47-1.91c-.12-.48-.48-.48-.6 0l-.47 1.91-1.91.47c-.48.12-.48.48 0 .6l1.91.47.47 1.91c.12.48.48.48.6 0l.47-1.91 1.91-.47c.48-.12.48-.48 0-.6zm3-11.51l-.95-.23-.23-.95c-.06-.24-.24-.24-.3 0l-.23.95-.95.23c-.24.06-.24.24 0 .3l.95.23.23.95c.06.24.24.24.3 0l.23-.95.95-.23c.24-.06.24-.24 0-.3z"/></svg>
@@ -38,12 +29,17 @@
             <span class="text">动态广场</span>
           </router-link>
 
-          <!-- 实时聊吧 -->
+          <!-- 实时聊吧 (💡 新增：全站侧边栏未读数红点气泡) -->
           <router-link to="/chat" class="sidebar-link" active-class="active">
             <span class="icon">
               <svg viewBox="0 0 24 24" class="svg-icon"><path d="M20 2H4c-1.1 0-1.99.9-1.99 2L2 22l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zM6 9h12v2H6V9zm8 5H6v-2h8v2zm4-6H6V6h12v2z"/></svg>
             </span>
-            <span class="text">实时聊吧</span>
+            <span class="nav-text-container">
+              <span class="text">实时聊吧</span>
+              <span v-if="chatStore.totalUnreadCount > 0" class="global-unread-badge">
+                {{ chatStore.totalUnreadCount }}
+              </span>
+            </span>
           </router-link>
 
           <!-- 账号设置 -->
@@ -62,7 +58,6 @@
             <span v-else>{{ authStore.avatar }}</span>
           </div>
           <div class="profile-info">
-            <!-- 💡 读取全局动态昵称 -->
             <div class="profile-name">{{ authStore.nickname || authStore.username }}</div>
             <div class="profile-logout" @click="handleLogout">安全登出</div>
           </div>
@@ -74,7 +69,7 @@
         <router-view />
       </main>
 
-      <!-- 右侧推荐面板 (PC端显示，移动端自动隐藏) -->
+      <!-- 右侧推荐面板 -->
       <aside class="right-panel">
         <div class="trends-box">
           <h3>𝕏 推荐话题</h3>
@@ -92,16 +87,18 @@
       </aside>
     </div>
 
-    <!-- 3. 移动端底部固底导航栏 (在屏宽 >= 768px 时，通过 CSS 自动隐藏) -->
+    <!-- 3. 移动端底部固底导航栏 (💡 新增：底栏未读数红点气泡) -->
     <nav class="mobile-bottom-bar">
-      <!-- <router-link to="/drive" class="bottom-link" active-class="active">
-        <svg viewBox="0 0 24 24" class="svg-icon"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-9 14H7v-7h3v7zm4 0h-3V7h3v10zm4 0h-3v-4h3v4z"/></svg>
-      </router-link> -->
       <router-link to="/moments" class="bottom-link" active-class="active">
         <svg viewBox="0 0 24 24" class="svg-icon"><path d="M22 10.51l-4.57-1.12L16.31 4.8c-.28-.68-.81-.68-1.09 0l-1.12 4.59L9.53 10.51c-.68.28-.68.81 0 1.09l4.57 1.12 1.12 4.59c.28.68.81.68 1.09 0l1.12-4.59 4.57-1.12c.68-.28.68-.81 0-1.09zM8.36 17.51l-1.91-.47-.47-1.91c-.12-.48-.48-.48-.6 0l-.47 1.91-1.91.47c-.48.12-.48.48 0 .6l1.91.47.47 1.91c.12.48.48.48.6 0l.47-1.91 1.91-.47c.48-.12.48-.48 0-.6zm3-11.51l-.95-.23-.23-.95c-.06-.24-.24-.24-.3 0l-.23.95-.95.23c-.24.06-.24.24 0 .3l.95.23.23.95c.06.24.24.24.3 0l.23-.95.95-.23c.24-.06.24-.24 0-.3z"/></svg>
       </router-link>
       <router-link to="/chat" class="bottom-link" active-class="active">
-        <svg viewBox="0 0 24 24" class="svg-icon"><path d="M20 2H4c-1.1 0-1.99.9-1.99 2L2 22l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zM6 9h12v2H6V9zm8 5H6v-2h8v2zm4-6H6V6h12v2z"/></svg>
+        <div class="bottom-icon-container">
+          <svg viewBox="0 0 24 24" class="svg-icon"><path d="M20 2H4c-1.1 0-1.99.9-1.99 2L2 22l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zM6 9h12v2H6V9zm8 5H6v-2h8v2zm4-6H6V6h12v2z"/></svg>
+          <span v-if="chatStore.totalUnreadCount > 0" class="global-unread-badge-mobile">
+            {{ chatStore.totalUnreadCount }}
+          </span>
+        </div>
       </router-link>
       <router-link to="/auth" class="bottom-link" active-class="active">
         <svg viewBox="0 0 24 24" class="svg-icon"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>
@@ -111,23 +108,43 @@
 </template>
 
 <script setup>
+import { onMounted, watch } from 'vue'
 import { useAuthStore } from './store/auth'
+import { useChatStore } from './store/chat'  
 import { useRouter } from 'vue-router'
 
 const authStore = useAuthStore()
+const chatStore = useChatStore() 
 const router = useRouter()
 
 const handleLogout = () => {
+  chatStore.disconnectWebSocket()
   authStore.logout()
   router.push('/auth')
 }
 
-// 辅助方法：识别头像类型（是公网图片链接还是纯文本/Emoji）
+// 💡 5. 全局初始化：只要用户一打开网站且处于登录态，立刻在全站后台激活常驻 WebSocket 守护连接！
+onMounted(() => {
+  if (authStore.isLoggedIn) {
+    chatStore.connectWebSocket()
+  }
+})
+
+// 💡 6. 监控登录态：当在 Auth 页面重新登录成功，自动瞬间在后台开启长连接守护
+watch(() => authStore.isLoggedIn, (loggedIn) => {
+  if (loggedIn) {
+    chatStore.connectWebSocket()
+  } else {
+    chatStore.disconnectWebSocket()
+  }
+})
+
 const isUrl = (text) => {
   if (!text) return false
   return text.startsWith('http://') || text.startsWith('https://') || text.startsWith('/')
 }
 </script>
+
 <style>
 /* 𝕏 全局重置样式（移动端自适应） */
 :root {
@@ -428,4 +445,51 @@ body {
 .profile-info { display: flex; flex-direction: column; text-align: left; }
 .profile-name { font-weight: bold; font-size: 0.95rem; }
 .profile-logout { font-size: 0.8rem; color: #ef4444; margin-top: 2px; }
+
+/* 💡 全站未读数小红点样式规范 */
+.nav-text-container {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+}
+.global-unread-badge {
+  background: #ef4444; /* 𝕏 亮红色 */
+  color: white;
+  font-size: 0.75rem;
+  font-weight: bold;
+  min-width: 18px;
+  height: 18px;
+  border-radius: 9999px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 4px;
+  box-sizing: border-box;
+}
+
+/* 移动端底栏专配红点 */
+.bottom-icon-container {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.global-unread-badge-mobile {
+  position: absolute;
+  top: -6px;
+  right: -8px;
+  background: #ef4444;
+  color: white;
+  font-size: 0.7rem;
+  font-weight: bold;
+  min-width: 16px;
+  height: 16px;
+  border-radius: 9999px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 3px;
+  box-sizing: border-box;
+}
 </style>

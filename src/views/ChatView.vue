@@ -69,10 +69,9 @@
             </button>
             <div class="header-info" @click="openUserProfile(selectedContact)" style="cursor: pointer;">
               <span class="header-name">{{ selectedContactProfile?.nickname || selectedContact }}</span>
-              <span class="header-status">@{{ selectedContact }} · {{ connected ? '实时在线' : '离线' }}</span>
+              <span class="header-status">@{{ selectedContact }} · {{ chatStore.connected ? '在线' : '离线' }}</span>
             </div>
           </div>
-          <button v-if="!connected" @click="connectChat" class="btn-reconnect">重连</button>
         </div>
 
         <!-- 对话消息池 -->
@@ -80,7 +79,6 @@
           <div v-for="(msg, idx) in messages" :key="idx" 
                :class="['message-row', msg.system ? 'sys-row' : (msg.self ? 'self-row' : 'peer-row')]">
             
-            <!-- 气泡主体 -->
             <div v-if="!msg.system" class="msg-bubble" @click.stop="toggleMessageMenu(idx)">
               <img v-if="isImage(msg.text)" :src="msg.text" class="chat-img" @load="scrollToBottom" />
               <span v-else>{{ msg.text }}</span>
@@ -88,14 +86,10 @@
                 <span v-if="msg.self" :class="['read-status', { 'status-read': msg.is_read }]">
                   {{ msg.is_read ? '已读' : '未读' }}
                 </span>
-                <!-- 💡 仅限含有数据库真实 ID 且没被撤回的已存档消息展示撤回选项 -->
-                <span v-if="msg.self && msg.id" class="btn-recall" @click="recallMessage(msg.id, idx)">
-                  撤回
-                </span>
                 <span class="msg-time">{{ msg.time }}</span>
               </div>
 
-              <!-- Telegram 风格气泡操作菜单 -->
+              <!-- Telegram 风格操作菜单 -->
               <div v-if="activeMenuIndex === idx" class="telegram-menu" @click.stop>
                 <button class="menu-item" @click="handleCopy(msg.text)">
                   <svg viewBox="0 0 24 24" class="menu-icon"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg>
@@ -109,7 +103,7 @@
               </div>
             </div>
             
-            <!-- 撤回系统提示 -->
+            <!-- 撤回提示 -->
             <div v-else class="sys-notice">{{ msg.text }}</div>
           </div>
         </div>
@@ -119,12 +113,12 @@
           <div class="input-pill">
             <input type="file" ref="fileInput" style="display: none" accept="image/*" @change="handleImageUpload">
             
-            <button @click="triggerImageSelect" class="btn-icon" :disabled="!connected" style="padding-top: 3px;">
+            <button @click="triggerImageSelect" class="btn-icon" :disabled="!chatStore.connected" style="padding-top: 3px;">
               <svg viewBox="0 0 24 24" class="svg-inline" style="color: var(--x-text-gray);"><path d="M19.75 2H4.25C3.01 2 2 3.01 2 4.25v15.5C2 20.99 3.01 22 4.25 22h15.5c1.24 0 2.25-1.01 2.25-2.25V4.25C22 3.01 20.99 2 19.75 2zM4.25 3.5h15.5c.41 0 .75.34.75.75v10.12l-3.21-3.21c-.29-.29-.77-.29-1.06 0l-3.87 3.87-2.31-2.31a.75.75 0 00-1.06 0L3.5 16.5V4.25c0-.41.34-.75.75-.75zM3.5 18.62l5.03-5.03 2.84 2.84c.29.29.77.29 1.06 0l3.34-3.34 3.77 3.77V19.75c0 .41-.34.75-.75.75H4.25c-.41 0-.75-.34-.75-.75v-1.13zM8.5 11c1.38 0 2.5-1.12 2.5-2.5S9.88 6 8.5 6 6 7.12 6 8.5 7.12 11 8.5 11zm0-3.5c.55 0 1 .45 1 1s-.45 1-1 1-1-.45-1-1 .45-1 1-1z"/></svg>
             </button>
 
-            <input type="text" v-model="messageInput" placeholder="开始撰写私信..." @keyup.enter="sendMessage" :disabled="!connected">
-            <button @click="sendMessage" class="btn-send" :disabled="!messageInput.trim() && !connected">
+            <input type="text" v-model="messageInput" placeholder="开始撰写私信..." @keyup.enter="sendMessage" :disabled="!chatStore.connected">
+            <button @click="sendMessage" class="btn-send" :disabled="!messageInput.trim() && !chatStore.connected">
               <svg viewBox="0 0 24 24" class="svg-inline"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
             </button>
           </div>
@@ -133,7 +127,7 @@
 
     </div>
 
-    <!-- 个人主页弹窗 -->
+    <!-- 个人主页弹窗 (Profile) -->
     <div v-if="activeProfile" class="modal-backdrop" @click.self="activeProfile = null">
       <div class="modal-card">
         <button class="modal-close" @click="activeProfile = null">✕</button>
@@ -161,32 +155,27 @@
 </template>
 
 <script setup>
-import { ref, reactive, onMounted, onUnmounted, nextTick, computed, watch } from 'vue'
+import { ref, onMounted, onUnmounted, nextTick, computed, watch } from 'vue'
 import { useAuthStore } from '../store/auth'
-import { useChatStore } from '../store/chat'
+import { useChatStore } from '../store/chat'  // 💡 引入全局常驻聊吧状态
 import { formatLocalTime } from '../utils/date'
 import { apiFetch } from '../utils/api'
 
-const WS_BASE  = import.meta.env.VITE_WS_BASE || 'ws://127.0.0.1:3000'
-
 const authStore = useAuthStore()
-const chatStore = useChatStore()
-const connected = ref(false)
+const chatStore = useChatStore() // 激活常驻服务
 const showAddModal = ref(false)
 const newFriendUsername = ref('')
 
 const friends = ref(chatStore.cachedFriends)
 const selectedContact = ref(chatStore.activeContact)
 const messageInput = ref('')
-const messages = reactive([])
-let ws = null
+
+// 💡 路由解耦：让消息变量直接共享绑定全局活性会话流
+const messages = computed(() => chatStore.activeMessages)
 
 const fileInput = ref(null)
 const activeProfile = ref(null)
 const activeMenuIndex = ref(null)
-
-let titleInterval = null
-const originalTitle = document.title || "DRIVE Space"
 
 const selectedContactProfile = computed(() => {
   return friends.value.find(f => f.username === selectedContact.value)
@@ -198,7 +187,6 @@ watch(selectedContact, (newVal) => {
 
 onMounted(() => {
   fetchFriends()
-  connectChat()
   if (selectedContact.value) {
     selectContact(selectedContact.value)
   }
@@ -206,8 +194,6 @@ onMounted(() => {
 })
 
 onUnmounted(() => {
-  if (ws) ws.close()
-  stopTitleFlash()
   window.removeEventListener('click', closeAllMenus)
 })
 
@@ -235,25 +221,27 @@ const handleCopy = (text) => {
 
 const handleRecall = (messageId, index) => {
   activeMenuIndex.value = null
-  if (!connected.value || !ws || !selectedContact.value) return
+  if (!chatStore.connected || !selectedContact.value) return
 
   if (!window.confirm("确定要撤回这条消息吗？")) {
     return
   }
 
-  ws.send(JSON.stringify({
+  // 💡 调用全局通道发送
+  chatStore.sendWebSocketPayload({
     type: "recall",
     to: selectedContact.value,
     message_id: messageId
-  }))
+  })
 
-  messages.splice(index, 1, {
+  // 修改全局流
+  chatStore.activeMessages.splice(index, 1, {
     system: true,
     text: '你撤回了一条消息'
   })
 
-  updateLastMessage(selectedContact.value, '你撤回了一条消息', true, '', true)
-  chatStore.setHistory(selectedContact.value, [...messages])
+  chatStore.updateLastMessageState(selectedContact.value, '你撤回了一条消息', true, '', true)
+  chatStore.setHistory(selectedContact.value, [...chatStore.activeMessages])
 }
 
 const fetchFriends = async () => {
@@ -323,30 +311,21 @@ const addFriend = async () => {
 
 const selectContact = async (friendUsername) => {
   selectedContact.value = friendUsername
-  messages.length = 0
   
+  // 缓存优先
   const cachedHistory = chatStore.cachedHistory[friendUsername] || []
-  messages.push(...cachedHistory)
+  chatStore.activeMessages = [...cachedHistory] 
   scrollToBottom()
 
   const friend = friends.value.find(f => f.username === friendUsername)
   if (friend) {
     friend.unread = 0
-    
-    // 💡 核心修改：清除未读数后，同样强制解构重绘，让红点在点击瞬间 0ms 消失！
     friends.value = [...friends.value]
-    
     chatStore.setFriends(friends.value)
   }
-  
-  const hasUnread = friends.value.some(f => f.unread > 0)
-  if (!hasUnread) {
-    stopTitleFlash()
-  }
 
-  if (connected.value && ws) {
-    ws.send(JSON.stringify({ type: "read", to: friendUsername }))
-  }
+  // 💡 调用全局通道发送已读包
+  chatStore.sendWebSocketPayload({ type: "read", to: friendUsername })
 
   try {
     const res = await apiFetch(`/chat/history/${friendUsername}`)
@@ -357,8 +336,7 @@ const selectContact = async (friendUsername) => {
         time: formatLocalTime(msg.time)
       }))
       chatStore.setHistory(friendUsername, localizedHistory)
-      messages.length = 0
-      messages.push(...localizedHistory)
+      chatStore.activeMessages = [...localizedHistory] 
       scrollToBottom()
     }
   } catch (err) {
@@ -366,130 +344,20 @@ const selectContact = async (friendUsername) => {
   }
 }
 
-const connectChat = () => {
-  if (!authStore.username) return
-  if (ws) ws.close()
-  
-  ws = new WebSocket(`${WS_BASE}/chat/ws/${authStore.username}`)
-  
-  ws.onopen = () => {
-    connected.value = true
-    if (selectedContact.value) {
-      ws.send(JSON.stringify({ type: "read", to: selectedContact.value }))
-    }
-  }
-
-  ws.onmessage = (event) => {
-    const data = JSON.parse(event.data)
-    playNotificationSound()
-
-    if (data.type === 'read') {
-      if (selectedContact.value === data.from) {
-        messages.forEach(msg => {
-          if (msg.self) {
-            msg.is_read = true
-          }
-        })
-        chatStore.setHistory(selectedContact.value, [...messages])
-      }
-      return
-    }
-
-    if (data.type === 'recall') {
-      const recalledId = data.message_id
-      const msgIndex = messages.findIndex(m => m.id === recalledId)
-      if (msgIndex !== -1) {
-        messages.splice(msgIndex, 1, {
-          system: true,
-          text: '对方撤回了一条消息'
-        })
-        chatStore.setHistory(selectedContact.value, [...messages])
-        updateLastMessage(data.from, '对方撤回了一条消息', false, '', true)
-      }
-      return
-    }
-
-    const isMsg = !data.type || data.type === 'msg'
-    if (isMsg) {
-      if (selectedContact.value === data.from) {
-        messages.push({
-          id: data.id,
-          from: data.from,
-          text: data.message,
-          time: getCurrentTimeLabel(),
-          self: false,
-          system: false,
-          is_read: true 
-        })
-        scrollToBottom()
-        chatStore.setHistory(selectedContact.value, [...messages])
-
-        updateLastMessage(data.from, data.message, false)
-
-        ws.send(JSON.stringify({ type: "read", to: data.from }))
-      } else {
-        const friend = friends.value.find(f => f.username === data.from)
-        if (friend) {
-          friend.unread++
-          chatStore.setFriends(friends.value)
-        }
-        triggerTitleFlash()
-        updateLastMessage(data.from, data.message, false)
-      }
-    }
-  }
-
-  ws.onclose = () => {
-    connected.value = false
-  }
-}
-
-
-const updateLastMessage = (friendUsername, text, isSelf = false, timeStr = '', isSystemNotice = false) => {
-  const friend = friends.value.find(f => f.username === friendUsername)
-  if (!friend) return
-
-  let displayMsg = text
-  if (text.startsWith('data:image/')) {
-    displayMsg = '[图片]'
-  } else if (!isSystemNotice && text.length > 15) {
-    displayMsg = text.substring(0, 15) + '...'
-  }
-
-  if (isSystemNotice) {
-    friend.last_message = displayMsg
-  } else {
-    const prefix = isSelf ? '我' : friend.nickname
-    friend.last_message = `${prefix}: ${displayMsg}`
-  }
-
-  let timeLabel = ""
-  if (timeStr) {
-    timeLabel = timeStr.split(' ')[1] || ""
-  } else {
-    const now = new Date()
-    timeLabel = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`
-  }
-  friend.last_message_time = timeLabel
-  
-  // 💡 核心修改：利用解构创建新引用，强制 Vue 3 在当前帧瞬间重绘侧边栏！
-  friends.value = [...friends.value]
-  
-  chatStore.setFriends(friends.value)
-}
-
-// 💡 极其重要的安全修改：彻底抹除高并发竞态 fetch 逻辑！
-// 当您发送消息时，消息会瞬间在您的本地屏幕上推入、归档，并留在画面中，绝不会再发生消失。
 const sendMessage = () => {
-  if (!connected.value || !ws || !selectedContact.value) return
+  if (!chatStore.connected || !selectedContact.value) return
   const text = messageInput.value.trim()
   if (!text) return
 
-  // WebSocket 实时发射
-  ws.send(JSON.stringify({ to: selectedContact.value, message: text }))
+  // 💡 调用全局常驻通道安全发送
+  chatStore.sendWebSocketPayload({
+    type: "msg",
+    to: selectedContact.value,
+    message: text
+  })
   
-  // 💡 发送成功后，本地直接安全追加归档（id 初始化为 null，代表未重新从数据库刷新，不需要瞬间撤回）
-  messages.push({ 
+  // 压入全局流
+  chatStore.activeMessages.push({ 
     id: null,
     from: authStore.username, 
     text: text, 
@@ -499,11 +367,26 @@ const sendMessage = () => {
     is_read: false 
   })
   
-  // 实时同步刷新左侧最新一条状态
-  updateLastMessage(selectedContact.value, text, true)
-  
-  // 💡 同步写入内存，保证 Tab 切换时缓存里也有这条最新发送的消息
-  chatStore.setHistory(selectedContact.value, [...messages])
+  chatStore.updateLastMessageState(selectedContact.value, text, true)
+  chatStore.setHistory(selectedContact.value, [...chatStore.activeMessages])
+
+  nextTick(async () => {
+    try {
+      const res = await apiFetch(`/chat/history/${selectedContact.value}`)
+      const data = await res.json()
+      if (res.ok) {
+        const localizedHistory = data.history.map(msg => ({
+          ...msg,
+          time: formatLocalTime(msg.time)
+        }))
+        chatStore.setHistory(selectedContact.value, localizedHistory)
+        chatStore.activeMessages = [...localizedHistory]
+        scrollToBottom()
+      }
+    } catch (e) {
+      console.error(e)
+    }
+  })
 
   messageInput.value = ''
   scrollToBottom()
@@ -512,8 +395,8 @@ const sendMessage = () => {
 const openUserProfile = async (targetUsername) => {
   try {
     const [profileRes, postsRes] = await Promise.all([
-      apiFetch(`/auth/profile/${targetUsername}`),
-      apiFetch(`/moments/user/${targetUsername}`)
+      fetch(`${API_BASE}/auth/profile/${targetUsername}`),
+      fetch(`${API_BASE}/moments/user/${targetUsername}`)
     ])
     if (profileRes.ok && postsRes.ok) {
       const user = await profileRes.json()
@@ -532,7 +415,6 @@ const triggerImageSelect = () => {
   if (fileInput.value) { fileInput.value.click() }
 }
 
-// 💡 同理，抹除发送图片后的网络重拉逻辑，确保图片留在聊天流中，不闪烁消失
 const handleImageUpload = (event) => {
   const file = event.target.files[0]
   if (!file) return
@@ -547,11 +429,14 @@ const handleImageUpload = (event) => {
   reader.onload = () => {
     const base64Data = reader.result
     
-    // WS 直发
-    ws.send(JSON.stringify({ to: selectedContact.value, message: base64Data }))
+    // 💡 全局通道发图
+    chatStore.sendWebSocketPayload({
+      type: "msg",
+      to: selectedContact.value,
+      message: base64Data
+    })
     
-    // 本地直接压入
-    messages.push({
+    chatStore.activeMessages.push({
       id: null,
       from: authStore.username,
       text: base64Data,
@@ -561,11 +446,21 @@ const handleImageUpload = (event) => {
       is_read: false
     })
     
-    // 侧边栏卡片摘要更新为 "[图片]"
-    updateLastMessage(selectedContact.value, base64Data, true)
-    
-    // 写入内存
-    chatStore.setHistory(selectedContact.value, [...messages])
+    chatStore.updateLastMessageState(selectedContact.value, base64Data, true)
+    chatStore.setHistory(selectedContact.value, [...chatStore.activeMessages])
+
+    nextTick(async () => {
+      try {
+        const res = await apiFetch(`/chat/history/${selectedContact.value}`)
+        const data = await res.json()
+        if (res.ok) {
+          const localizedHistory = data.history.map(msg => ({ ...msg, time: formatLocalTime(msg.time) }))
+          chatStore.setHistory(selectedContact.value, localizedHistory)
+          chatStore.activeMessages = [...localizedHistory]
+          scrollToBottom()
+        }
+      } catch (e) { console.error(e) }
+    })
 
     scrollToBottom()
   }
@@ -597,6 +492,7 @@ const getCurrentTimeLabel = () => {
   return `${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`
 }
 </script>
+
 
 <style scoped>
 /* 𝕏 经典分栏排版 */
