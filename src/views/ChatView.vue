@@ -202,9 +202,10 @@ onMounted(() => {
 })
 
 onUnmounted(() => {
-  // 💡 核心修改：当离开聊天组件时，自动在内存中切断/清空选中的活跃会话
-  // 这使得下一次用户点击聊天菜单时，必定会百分之百展示最清纯的好友列表！
-  selectedContact.value = null
+  // 💡 核心修复：手动、显式调用 Pinia 方法将活跃联系人重置为 null 写入缓存！
+  // 绕过组件卸载时 Vue3 自动销毁监听器（Watcher）的限制，确保下次进来绝对是联系人列表。
+  chatStore.setActiveContact(null)
+  
   window.removeEventListener('click', closeAllMenus)
 })
 
