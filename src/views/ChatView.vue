@@ -1,4 +1,4 @@
-<!-- src/views/ChatView.vue -->
+<!-- src/views/ChatView.vue (除 <style> 之外的完整最新代码) -->
 <template>
   <div class="x-dm-layout">
     
@@ -62,7 +62,7 @@
       <!-- 活动聊天窗口 -->
       <div v-else class="chat-window">
         <!-- 窗口头部 -->
- <div class="chat-header">
+        <div class="chat-header">
           <div class="chat-header-left">
             <button @click="selectedContact = null" class="btn-back">
               <svg viewBox="0 0 24 24" class="svg-inline"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"/></svg>
@@ -78,8 +78,6 @@
         <div class="chat-body" id="chatFlow">
           <div v-for="(msg, idx) in messages" :key="idx" 
                :class="['message-row', msg.system ? 'sys-row' : (msg.self ? 'self-row' : 'peer-row')]">
-            
-            <!-- 气泡主体 -->
             <div v-if="!msg.system" class="msg-bubble" @click.stop="toggleMessageMenu(idx)">
               <img v-if="isImage(msg.text)" :src="msg.text" class="chat-img" @load="scrollToBottom" />
               <span v-else>{{ msg.text }}</span>
@@ -87,11 +85,10 @@
                 <span v-if="msg.self" :class="['read-status', { 'status-read': msg.is_read }]">
                   {{ msg.is_read ? '已读' : '未读' }}
                 </span>
-                <!-- 💡 核心修改：消息底部彻底移除了常驻的“撤回”链接，使气泡保持极度纯净 -->
                 <span class="msg-time">{{ msg.time }}</span>
               </div>
 
-              <!-- Telegram 风格高级蓝黑气泡操作菜单 (撤回选项仅在这里显示) -->
+              <!-- Telegram 操作菜单 -->
               <div v-if="activeMenuIndex === idx" class="telegram-menu" @click.stop>
                 <button class="menu-item" @click="handleCopy(msg.text)">
                   <svg viewBox="0 0 24 24" class="menu-icon"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg>
@@ -105,7 +102,7 @@
               </div>
             </div>
             
-            <!-- 撤回灰色系统提示 -->
+            <!-- 撤回提示 -->
             <div v-else class="sys-notice">{{ msg.text }}</div>
           </div>
         </div>
@@ -116,10 +113,9 @@
             <input type="file" ref="fileInput" style="display: none" accept="image/*" @change="handleImageUpload">
             
             <button @click="triggerImageSelect" class="btn-icon" :disabled="!chatStore.connected" style="padding-top: 3px;">
-              <svg viewBox="0 0 24 24" class="svg-inline" style="color: var(--x-text-gray);"><path d="M19.75 2H4.25C3.01 2 2 3.01 2 4.25v15.5C2 20.99 3.01 22 4.25 22h15.5c1.24 0 2.25-1.01 2.25-2.25V4.25C22 3.01 20.99 2 19.75 2zM4.25 3.5h15.5c.41 0 .75.34.75.75v10.12l-3.21-3.21c-.29-.29-.77-.29-1.06 0l-3.87 3.87-2.31-2.31a.75.75 0 00-1.06 0L3.5 16.5V4.25c0-.41.34-.75.75-.75zM3.5 18.62l5.03-5.03 2.84 2.84c.29.29.77.29 1.06 0l3.34-3.34 3.77 3.77V19.75c0 .41-.34.75-.75.75H4.25c-.41 0-.75-.34-.75-.75v-1.13zM8.5 11c1.38 0 2.5-1.12 2.5-2.5S9.88 6 8.5 6 6 7.12 6 8.5 7.12 11 8.5 11zm0-3.5c.55 0 1 .45 1 1s-.45 1-1 1-1-.45-1-1 .45-1 1-1z"/></svg>
+              <svg viewBox="0 0 24 24" class="svg-inline" style="color: var(--x-text-gray);"><path d="M19.75 2H4.25C3.01 2 2 3.01 2 4.25v15.5C2 20.99 3.01 22 4.25 22h15.5c1.24 0 2.25-1.01 2.25-2.25V4.25C22 3.01 20.99 2 19.75 2zM4.25 3.5h15.5c.41 0 .75.34.75.75v10.12l-3.21-3.21c-.29-.29-.77-.29-1.06 0l-3.87 3.87-2.31-2.31a.75.75 0 00-1.06 0L3.5 16.5V4.25c0-.41.34-.75.75-.75zM3.5 18.62l5.03-5.03 2.84 2.84c.29.29.77.29 1.06 0l-3.34-3.34 3.77 3.77V19.75c0 .41-.34.75-.75.75H4.25c-.41 0-.75-.34-.75-.75v-1.13zM8.5 11c1.38 0 2.5-1.12 2.5-2.5S9.88 6 8.5 6 6 7.12 6 8.5 7.12 11 8.5 11zm0-3.5c.55 0 1 .45 1 1s-.45 1-1 1-1-.45-1-1 .45-1 1-1z"/></svg>
             </button>
 
-            <!-- 绑定发送逻辑 -->
             <input type="text" v-model="messageInput" placeholder="开始撰写私信..." @keyup.enter="sendMessage" :disabled="!chatStore.connected">
             <button @click="sendMessage" class="btn-send" :disabled="!messageInput.trim() && !chatStore.connected">
               <svg viewBox="0 0 24 24" class="svg-inline"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
@@ -130,11 +126,11 @@
 
     </div>
 
-    <!-- 个人主页弹窗 (Profile) -->
+    <!-- 个人主页弹窗 -->
     <div v-if="activeProfile" class="modal-backdrop" @click.self="activeProfile = null">
       <div class="modal-card">
         <button class="modal-close" @click="activeProfile = null">✕</button>
- <div class="modal-header">
+        <div class="modal-header">
           <div class="modal-avatar-big">
             <img v-if="isUrl(activeProfile.user.avatar)" :src="activeProfile.user.avatar" class="avatar-img-el" />
             <span v-else-if="activeProfile.user.avatar && activeProfile.user.avatar !== '👤'">{{ activeProfile.user.avatar }}</span>
@@ -143,7 +139,7 @@
           <h2 class="modal-nickname">{{ activeProfile.user.nickname }}</h2>
           <p class="modal-handle">@{{ activeProfile.user.username }}</p>
 
-          <!-- 💡 新增：删除好友控制（如果是当前好友，且不是我自己，则渲染删除按钮） -->
+          <!-- 解除好友控制 -->
           <div v-if="isCurrentFriend && activeProfile.user.username !== authStore.username" style="margin-top: 15px;">
             <button @click="handleDeleteFriend(activeProfile.user.username)" class="btn-profile-delete">
               解除好友关系
@@ -186,11 +182,13 @@ const fileInput = ref(null)
 const activeProfile = ref(null)
 const activeMenuIndex = ref(null)
 
-let titleInterval = null
-const originalTitle = document.title || "DRIVE Space"
-
 const selectedContactProfile = computed(() => {
   return friends.value.find(f => f.username === selectedContact.value)
+})
+
+const isCurrentFriend = computed(() => {
+  if (!activeProfile.value) return false
+  return friends.value.some(f => f.username === activeProfile.value.user.username)
 })
 
 watch(selectedContact, (newVal) => {
@@ -199,13 +197,14 @@ watch(selectedContact, (newVal) => {
 
 onMounted(() => {
   fetchFriends()
-  if (selectedContact.value) {
-    selectContact(selectedContact.value)
-  }
+  // 💡 自动秒开移除：由于用户希望每次进来都是列表，所以这里不再调用自动 select 逻辑
   window.addEventListener('click', closeAllMenus)
 })
 
 onUnmounted(() => {
+  // 💡 核心修改：当离开聊天组件时，自动在内存中切断/清空选中的活跃会话
+  // 这使得下一次用户点击聊天菜单时，必定会百分之百展示最清纯的好友列表！
+  selectedContact.value = null
   window.removeEventListener('click', closeAllMenus)
 })
 
@@ -252,6 +251,30 @@ const handleRecall = (messageId, index) => {
 
   updateLastMessage(selectedContact.value, '你撤回了一条消息', true, '', true)
   chatStore.setHistory(selectedContact.value, [...chatStore.activeMessages])
+}
+
+const handleDeleteFriend = async (friendUsername) => {
+  if (!window.confirm(`确定要解除与 @${friendUsername} 的好友关系吗？（你们的历史聊天记录仍将安全保留）`)) {
+    return
+  }
+  try {
+    const res = await apiFetch('/chat/friend/delete', {
+      method: 'POST',
+      body: JSON.stringify({ friend_username: friendUsername })
+    })
+    
+    if (res.ok) {
+      activeProfile.value = null   
+      selectedContact.value = null // 自动退出并回弹
+      fetchFriends()               // 静默刷新列表
+      
+    } else {
+      alert('解除好友失败')
+    }
+  } catch (err) {
+    console.error(err)
+    alert('请求失败')
+  }
 }
 
 const fetchFriends = async () => {
@@ -353,84 +376,6 @@ const selectContact = async (friendUsername) => {
   }
 }
 
-const connectChat = () => {
-  if (!authStore.username) return
-  if (ws) ws.close()
-  
-  ws = new WebSocket(`${WS_BASE}/chat/ws/${authStore.username}`)
-  
-  ws.onopen = () => {
-    connected.value = true
-    if (selectedContact.value) {
-      ws.send(JSON.stringify({ type: "read", to: selectedContact.value }))
-    }
-  }
-
-  ws.onmessage = (event) => {
-    const data = JSON.parse(event.data)
-    playNotificationSound()
-
-    if (data.type === 'read') {
-      if (selectedContact.value === data.from) {
-        messages.forEach(msg => {
-          if (msg.self) {
-            msg.is_read = true
-          }
-        })
-        chatStore.setHistory(selectedContact.value, [...messages])
-      }
-      return
-    }
-
-    if (data.type === 'recall') {
-      const recalledId = data.message_id
-      const msgIndex = messages.findIndex(m => m.id === recalledId)
-      if (msgIndex !== -1) {
-        messages.splice(msgIndex, 1, {
-          system: true,
-          text: '对方撤回了一条消息'
-        })
-        chatStore.setHistory(selectedContact.value, [...messages])
-        updateLastMessage(data.from, '对方撤回了一条消息', false, '', true)
-      }
-      return
-    }
-
-    const isMsg = !data.type || data.type === 'msg'
-    if (isMsg) {
-      if (selectedContact.value === data.from) {
-        messages.push({
-          id: data.id,
-          from: data.from,
-          text: data.message,
-          time: getCurrentTimeLabel(),
-          self: false,
-          system: false,
-          is_read: true 
-        })
-        scrollToBottom()
-        chatStore.setHistory(selectedContact.value, [...messages])
-
-        updateLastMessage(data.from, data.message, false)
-
-        ws.send(JSON.stringify({ type: "read", to: data.from }))
-      } else {
-        const friend = friends.value.find(f => f.username === data.from)
-        if (friend) {
-          friend.unread++
-          chatStore.setFriends(friends.value)
-        }
-        triggerTitleFlash()
-        updateLastMessage(data.from, data.message, false)
-      }
-    }
-  }
-
-  ws.onclose = () => {
-    connected.value = false
-  }
-}
-
 const updateLastMessage = (friendUsername, text, isSelf = false, timeStr = '', isSystemNotice = false) => {
   const friend = friends.value.find(f => f.username === friendUsername)
   if (!friend) return
@@ -462,22 +407,19 @@ const updateLastMessage = (friendUsername, text, isSelf = false, timeStr = '', i
   chatStore.setFriends(friends.value)
 }
 
-// 💡 彻底修复的发送消息函数（删除了多余的 nextTick 竞争拉取逻辑）
 const sendMessage = () => {
   if (!chatStore.connected || !selectedContact.value) return
   const text = messageInput.value.trim()
   if (!text) return
 
-  // 1. 发送 WebSocket 消息
   chatStore.sendWebSocketPayload({
     type: "msg",
     to: selectedContact.value,
     message: text
   })
   
-  // 2. 本地直接、无缝追加到渲染数组中
   chatStore.activeMessages.push({ 
-    id: null, // 发送瞬间暂无自增ID
+    id: null,
     from: authStore.username, 
     text: text, 
     time: getCurrentTimeLabel(), 
@@ -486,18 +428,13 @@ const sendMessage = () => {
     is_read: false 
   })
   
-  // 3. 实时刷新左侧最新一条状态为“我：内容”
   updateLastMessage(selectedContact.value, text, true)
-  
-  // 4. 同步写入内存，保证切换 Tab 不流失
   chatStore.setHistory(selectedContact.value, [...chatStore.activeMessages])
 
-  // 💡 5. 瞬间清空输入框，100% 成功！
   messageInput.value = ''
   scrollToBottom()
 }
 
-// 💡 异步加载他人公开资料：这里必须统一修改为 apiFetch！
 const openUserProfile = async (targetUsername) => {
   try {
     const [profileRes, postsRes] = await Promise.all([
@@ -524,7 +461,6 @@ const triggerImageSelect = () => {
   if (fileInput.value) { fileInput.value.click() }
 }
 
-// 💡 同样彻底修复的发图函数：删除冗余的 nextTick 竞争拉取逻辑
 const handleImageUpload = (event) => {
   const file = event.target.files[0]
   if (!file) return
@@ -539,14 +475,12 @@ const handleImageUpload = (event) => {
   reader.onload = () => {
     const base64Data = reader.result
     
-    // 发图
     chatStore.sendWebSocketPayload({
       type: "msg",
       to: selectedContact.value,
       message: base64Data
     })
     
-    // 本地直接压入
     chatStore.activeMessages.push({
       id: null,
       from: authStore.username,
@@ -589,41 +523,11 @@ const getCurrentTimeLabel = () => {
   const now = new Date()
   return `${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`
 }
-
-// 💡 新增计算属性：判断弹窗中查看的这个人，当前是否已经是我的好友
-const isCurrentFriend = computed(() => {
-  if (!activeProfile.value) return false
-  return friends.value.some(f => f.username === activeProfile.value.user.username)
-})
-
-// 💡 新增方法：向后端发送删除好友请求（双向解除关系 ＋ 彻底清空聊天历史）
-const handleDeleteFriend = async (friendUsername) => {
-  if (!window.confirm(`确定要解除与 @${friendUsername} 的好友关系吗？（你们的历史聊天记录仍将安全保留）`)) {
-    return
-  }
-  try {
-    const res = await apiFetch('/chat/friend/delete', {
-      method: 'POST',
-      body: JSON.stringify({ friend_username: friendUsername })
-    })
-    const data = await res.json()
-    
-    if (res.ok) {
-      activeProfile.value = null   // 1. 关闭个人主页弹窗
-      selectedContact.value = null // 2. 回弹关闭当前聊天窗口
-      fetchFriends()               // 3. 重新拉取并重绘联系人列表缓存      
-
-    } else {
-      alert(data.detail || '解除好友失败')
-    }
-  } catch (err) {
-    console.error(err)
-    alert('请求失败')
-  }
-}
-
-
 </script>
+
+
+
+
 
 <style scoped>
 /* 𝕏 经典分栏排版 */

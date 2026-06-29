@@ -1,58 +1,39 @@
-<!-- src/App.vue -->
+<!-- src/App.vue (除 <style> 之外的完整最新代码) -->
 <template>
   <div class="app-layout">
-    <!-- 移动端顶部固定栏 -->
+    <!-- 1. 移动端顶部固定栏 (💡 头像现在是可点击链接，直通个人主页！) -->
     <header class="mobile-top-bar">
-      <div class="avatar-placeholder">
-        <img v-if="isUrl(authStore.avatar)" :src="authStore.avatar" class="avatar-img-el" />
-        <span v-else>{{ authStore.avatar }}</span>
-      </div>
+      <router-link to="/auth" class="avatar-placeholder-link">
+        <div class="avatar-placeholder">
+          <img v-if="isUrl(authStore.avatar)" :src="authStore.avatar" class="avatar-img-el" />
+          <span v-else>{{ authStore.avatar }}</span>
+        </div>
+      </router-link>
       <div class="app-logo">𝕏 DRIVE Space</div>
       <div class="top-action-placeholder" style="width: 32px;"></div>
     </header>
 
-    <!-- 核心响应式布局容器 -->
+    <!-- 2. 核心响应式布局容器 -->
     <div class="main-container">
-      <!-- 左侧边栏导航 (PC 端可见) -->
+      <!-- 左侧边栏导航 (PC 端显示，移动端自动隐藏) -->
       <aside class="sidebar">
         <div class="sidebar-logo">𝕏</div>
         <nav class="sidebar-nav">
-          <!-- 主页 -->
-          <router-link to="/home" class="sidebar-link" active-class="active">
+          <!-- 动态广场 -->
+          <router-link to="/moments" class="sidebar-link" active-class="active">
             <span class="icon">
-              <svg viewBox="0 0 24 24" class="svg-icon"><path d="M12 2.69l5.66 5.58a1 1 0 0 1 .3.71V19a2 2 0 0 1-2 2H13v-6h-2v6H8a2 2 0 0 1-2-2V8.98a1 1 0 0 1 .3-.71z"/></svg>
+              <svg viewBox="0 0 24 24" class="svg-icon"><path d="M22 10.51l-4.57-1.12L16.31 4.8c-.28-.68-.81-.68-1.09 0l-1.12 4.59L9.53 10.51c-.68.28-.68.81 0 1.09l4.57 1.12 1.12 4.59c.28.68.81.68 1.09 0l1.12-4.59 4.57-1.12c.68-.28.68-.81 0-1.09zM8.36 17.51l-1.91-.47-.47-1.91c-.12-.48-.48-.48-.6 0l-.47 1.91-1.91.47c-.48.12-.48.48 0 .6l1.91.47.47 1.91c.12.48.48.48.6 0l.47-1.91 1.91-.47c.48-.12.48-.48 0-.6zm3-11.51l-.95-.23-.23-.95c-.06-.24-.24-.24-.3 0l-.23.95-.95.23c-.24.06-.24.24 0 .3l.95.23.23.95c.06.24.24.24.3 0l.23-.95.95-.23c.24-.06.24-.24 0-.3z"/></svg>
             </span>
-            <span class="text">主页</span>
+            <span class="text">动态广场</span>
           </router-link>
 
-          <!-- 搜索 -->
-          <router-link to="/search" class="sidebar-link" active-class="active">
-            <span class="icon">
-              <svg viewBox="0 0 24 24" class="svg-icon"><path d="M21.53 20.47l-3.66-3.66C19.195 15.24 20 13.214 20 11c0-4.97-4.03-9-9-9s-9 4.03-9 9 4.03 9 9 9c2.215 0 4.24-.804 5.808-2.13l3.66 3.66c.147.146.34.22.53.22s.385-.073.53-.22c.295-.293.295-.767.002-1.06zM3.5 11c0-4.135 3.365-7.5 7.5-7.5s7.5 3.365 7.5 7.5-3.365 7.5-7.5 7.5-7.5-3.365-7.5-7.5z"/></svg>
-            </span>
-            <span class="text">搜索</span>
-          </router-link>
-
-          <!-- 通知 -->
-          <router-link to="/notifications" class="sidebar-link" active-class="active">
-            <span class="icon">
-              <svg viewBox="0 0 24 24" class="svg-icon"><path d="M21.163 11.636L19 9.473V6c0-3.309-2.691-6-6-6S7 2.691 7 6v3.473L4.837 11.64c-.21.21-.337.5-.337.803v3.53c0 .553.448 1 1 1h5.182a3.003 3.003 0 0 0 5.636 0h5.182c.552 0 1-.447 1-1v-3.53c0-.303-.127-.593-.337-.807zM13 19a1.002 1.002 0 0 1-1-1h2c0 .552-.448 1-1 1zm7-3H6v-3.111l1.837-1.836A1 1 0 0 0 8.163 11V6c0-2.206 1.794-4 4-4s4 1.794 4 4v5a1 1 0 0 0 .326.713L20 12.889V16z"/></svg>
-            </span>
-            <span class="nav-text-container">
-              <span class="text">通知</span>
-              <span v-if="chatStore.pendingRequestsCount > 0" class="global-unread-badge">
-                {{ chatStore.pendingRequestsCount }}
-              </span>
-            </span>
-          </router-link>
-
-          <!-- 聊天 -->
+          <!-- 实时聊吧 -->
           <router-link to="/chat" class="sidebar-link" active-class="active">
             <span class="icon">
               <svg viewBox="0 0 24 24" class="svg-icon"><path d="M20 2H4c-1.1 0-1.99.9-1.99 2L2 22l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zM6 9h12v2H6V9zm8 5H6v-2h8v2zm4-6H6V6h12v2z"/></svg>
             </span>
             <span class="nav-text-container">
-              <span class="text">聊天</span>
+              <span class="text">实时聊吧</span>
               <span v-if="chatStore.totalUnreadCount > 0" class="global-unread-badge">
                 {{ chatStore.totalUnreadCount }}
               </span>
@@ -60,11 +41,11 @@
           </router-link>
 
           <!-- 个人资料 -->
-         <router-link to="/auth" class="sidebar-link" active-class="active">
+          <router-link to="/auth" class="sidebar-link" active-class="active">
             <span class="icon">
               <svg viewBox="0 0 24 24" class="svg-icon"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>
             </span>
-            <span class="text">个人资料</span> <!-- 💡 修改为 个人资料 -->
+            <span class="text">个人资料</span>
           </router-link>
 
           <!-- PC 大发帖按钮 -->
@@ -86,12 +67,12 @@
         </div>
       </aside>
 
-      <!-- 中间主内容路由 -->
+      <!-- 中间主内容区 (路由挂载点) -->
       <main class="content-area">
         <router-view />
       </main>
 
-      <!-- 右侧推荐区 -->
+      <!-- 右侧推荐面板 -->
       <aside class="right-panel">
         <div class="trends-box">
           <h3>𝕏 推荐话题</h3>
@@ -109,26 +90,15 @@
       </aside>
     </div>
 
-    <!-- 💡 核心修改：移动端右下角漂浮发帖按钮 (在 auth 且处于 '/home' 路由下才显示) -->
+    <!-- 移动端右下角悬浮发帖按钮 -->
     <button v-if="authStore.isLoggedIn && route.path === '/home'" @click="showComposeModal = true" class="mobile-fab-btn">
       <svg viewBox="0 0 24 24" class="svg-inline" style="width: 24px; height: 24px; fill: white;"><path d="M23 3c-6.62-.1-10.38 2.421-13.05 6.03C7.29 12.61 6 17.331 6 22h2c0-1.007.07-2.012.19-3H12c4.1 0 7.48-3.082 7.94-7.054C22.79.137 23 0 23 0zm-7 11.054c-2.45 0-4.44-1.59-4.44-4.041 0-2.451 1.99-4.441 4.44-4.441 2.451 0 4.441 1.99 4.441 4.441 0 2.451-1.99 4.041-4.441 4.041zM2.5 15h3V13h-3v-3h-2v3h-3v2h3v3h2v-3z"/></svg>
     </button>
 
     <!-- 移动端底部导航栏 -->
     <nav class="mobile-bottom-bar">
-      <router-link to="/home" class="bottom-link" active-class="active">
-        <svg viewBox="0 0 24 24" class="svg-icon"><path d="M12 2.69l5.66 5.58a1 1 0 0 1 .3.71V19a2 2 0 0 1-2 2H13v-6h-2v6H8a2 2 0 0 1-2-2V8.98a1 1 0 0 1 .3-.71z"/></svg>
-      </router-link>
-      <router-link to="/search" class="bottom-link" active-class="active">
-        <svg viewBox="0 0 24 24" class="svg-icon"><path d="M21.53 20.47l-3.66-3.66C19.195 15.24 20 13.214 20 11c0-4.97-4.03-9-9-9s-9 4.03-9 9 4.03 9 9 9c2.215 0 4.24-.804 5.808-2.13l3.66 3.66c.147.146.34.22.53.22s.385-.073.53-.22c.295-.293.295-.767.002-1.06zM3.5 11c0-4.135 3.365-7.5 7.5-7.5s7.5 3.365 7.5 7.5-3.365 7.5-7.5 7.5-7.5-3.365-7.5-7.5z"/></svg>
-      </router-link>
-      <router-link to="/notifications" class="bottom-link" active-class="active">
-        <div class="bottom-icon-container">
-          <svg viewBox="0 0 24 24" class="svg-icon"><path d="M21.163 11.636L19 9.473V6c0-3.309-2.691-6-6-6S7 2.691 7 6v3.473L4.837 11.64c-.21.21-.337.5-.337.803v3.53c0 .553.448 1 1 1h5.182a3.003 3.003 0 0 0 5.636 0h5.182c.552 0 1-.447 1-1v-3.53c0-.303-.127-.593-.337-.807zM13 19a1.002 1.002 0 0 1-1-1h2c0 .552-.448 1-1 1zm7-3H6v-3.111l1.837-1.836A1 1 0 0 0 8.163 11V6c0-2.206 1.794-4 4-4s4 1.794 4 4v5a1 1 0 0 0 .326.713L20 12.889V16z"/></svg>
-          <span v-if="chatStore.pendingRequestsCount > 0" class="global-unread-badge-mobile">
-            {{ chatStore.pendingRequestsCount }}
-          </span>
-        </div>
+      <router-link to="/moments" class="bottom-link" active-class="active">
+        <svg viewBox="0 0 24 24" class="svg-icon"><path d="M22 10.51l-4.57-1.12L16.31 4.8c-.28-.68-.81-.68-1.09 0l-1.12 4.59L9.53 10.51c-.68.28-.68.81 0 1.09l4.57 1.12 1.12 4.59c.28.68.81.68 1.09 0l1.12-4.59 4.57-1.12c.68-.28.68-.81 0-1.09zM8.36 17.51l-1.91-.47-.47-1.91c-.12-.48-.48-.48-.6 0l-.47 1.91-1.91.47c-.48.12-.48.48 0 .6l1.91.47.47 1.91c.12.48.48.48.6 0l.47-1.91 1.91-.47c.48-.12.48-.48 0-.6zm3-11.51l-.95-.23-.23-.95c-.06-.24-.24-.24-.3 0l-.23.95-.95.23c-.24.06-.24.24 0 .3l.95.23.23.95c.06.24.24.24.3 0l.23-.95.95-.23c.24-.06.24-.24 0-.3z"/></svg>
       </router-link>
       <router-link to="/chat" class="bottom-link" active-class="active">
         <div class="bottom-icon-container">
@@ -138,19 +108,19 @@
           </span>
         </div>
       </router-link>
+      <router-link to="/auth" class="bottom-link" active-class="active">
+        <svg viewBox="0 0 24 24" class="svg-icon"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>
+      </router-link>
     </nav>
 
-    <!-- 💡 核心修改：全新重塑的高端极简 𝕏.com 风格发帖大模态弹窗 (Global Compose Modal) -->
+    <!-- 全局发帖大模态弹窗 -->
     <div v-if="showComposeModal" class="modal-backdrop" @click.self="closeComposeModal">
       <div class="modal-card compose-modal-card">
-        <!-- 弹窗顶端关闭栏 -->
         <div class="compose-modal-header">
           <button class="modal-close-btn" @click="closeComposeModal">
             <svg viewBox="0 0 24 24" class="svg-inline"><path d="M10.59 12L4.54 5.96l1.42-1.42L12 10.59l6.04-6.05 1.42 1.42L13.41 12l6.05 6.04-1.42 1.42L12 13.41l-6.04 6.05-1.42-1.42L10.59 12z"/></svg>
           </button>
         </div>
-        
-        <!-- 弹窗书写主体 -->
         <div class="global-compose-body">
           <div class="profile-avatar compose-avatar">
             <img v-if="isUrl(authStore.avatar)" :src="authStore.avatar" class="avatar-img-el" />
@@ -159,7 +129,6 @@
           <div class="compose-content-area">
             <textarea v-model="globalPostContent" placeholder="有什么新鲜事吗？" class="global-textarea" rows="4" maxlength="280"></textarea>
             <div class="compose-divider"></div>
-            <!-- 底部丸子发布与字数统计 -->
             <div class="compose-footer-row">
               <span class="char-counter" :class="{ 'warning-count': globalPostContent.length >= 260 }">
                 {{ globalPostContent.length }}/280
@@ -175,15 +144,15 @@
 </template>
 
 <script setup>
-import { ref, onMounted, watch } from 'vue'
+import { onMounted, watch } from 'vue'
 import { useAuthStore } from './store/auth'
 import { useChatStore } from './store/chat'
-import { useRouter, useRoute } from 'vue-router' 
+import { useRouter, useRoute } from 'vue-router'
 
 const authStore = useAuthStore()
 const chatStore = useChatStore()
 const router = useRouter()
-const route = useRoute() 
+const route = useRoute()
 
 const showComposeModal = ref(false)
 const globalPostContent = ref('')
@@ -690,4 +659,6 @@ body {
 .pill-btn { background: var(--x-blue); color: white; border: none; padding: 0 20px; height: 36px; border-radius: 9999px; font-weight: bold; cursor: pointer; transition: background 0.2s; }
 .pill-btn:hover { background: #1a8cd8; }
 .pill-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.avatar-placeholder-link { text-decoration: none; color: inherit; display: flex; align-items: center; }
 </style>
