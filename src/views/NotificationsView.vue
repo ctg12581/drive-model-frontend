@@ -80,7 +80,6 @@ const handleAction = async (requestId, action) => {
       // 动画式从本地过滤删除，并更新计数器
       requests.value = requests.value.filter(r => r.id !== requestId)
       chatStore.pendingRequestsCount = requests.value.length
-      alert(action === 'accept' ? '已同意好友请求' : '已拒绝好友请求')
     }
   } catch {
     alert('请求处理失败')

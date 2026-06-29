@@ -598,7 +598,6 @@ const isCurrentFriend = computed(() => {
 
 // 💡 新增方法：向后端发送删除好友请求（双向解除关系 ＋ 彻底清空聊天历史）
 const handleDeleteFriend = async (friendUsername) => {
-  // 💡 升级：修改确认提示语，明确告知用户历史聊天记录将被安全保留
   if (!window.confirm(`确定要解除与 @${friendUsername} 的好友关系吗？（你们的历史聊天记录仍将安全保留）`)) {
     return
   }
@@ -610,10 +609,10 @@ const handleDeleteFriend = async (friendUsername) => {
     const data = await res.json()
     
     if (res.ok) {
-      alert(data.message)
       activeProfile.value = null   // 1. 关闭个人主页弹窗
       selectedContact.value = null // 2. 回弹关闭当前聊天窗口
-      fetchFriends()               // 3. 重新拉取并重绘联系人列表缓存
+      fetchFriends()               // 3. 重新拉取并重绘联系人列表缓存      
+
     } else {
       alert(data.detail || '解除好友失败')
     }
@@ -622,6 +621,7 @@ const handleDeleteFriend = async (friendUsername) => {
     alert('请求失败')
   }
 }
+
 
 </script>
 
