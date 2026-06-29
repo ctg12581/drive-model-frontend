@@ -36,13 +36,10 @@
             <div class="contact-details">
               <div class="contact-name-row">
                 <span class="contact-name">{{ friend.nickname }}</span>
-                <!-- 💡 消息时间戳 -->
                 <span class="contact-time-sub">{{ friend.last_message_time }}</span>
               </div>
-              <!-- 💡 展示最新一条消息摘要 -->
               <div class="contact-last-msg">{{ friend.last_message || '点击开始对话' }}</div>
             </div>
-            <!-- 亮红色未读数徽章 -->
             <div v-if="friend.unread > 0" class="unread-badge">
               {{ friend.unread }}
             </div>
@@ -82,6 +79,8 @@
         <div class="chat-body" id="chatFlow">
           <div v-for="(msg, idx) in messages" :key="idx" 
                :class="['message-row', msg.system ? 'sys-row' : (msg.self ? 'self-row' : 'peer-row')]">
+            
+            <!-- 气泡主体 (阻止冒泡) -->
             <div v-if="!msg.system" class="msg-bubble" @click.stop="toggleMessageMenu(idx)">
               <img v-if="isImage(msg.text)" :src="msg.text" class="chat-img" @load="scrollToBottom" />
               <span v-else>{{ msg.text }}</span>
@@ -92,10 +91,20 @@
                 <span class="msg-time">{{ msg.time }}</span>
               </div>
 
-              <!-- Telegram 风格气泡操作菜单 -->
+              <!-- 💡 升级：Telegram 风格高档深邃蓝黑悬浮菜单 -->
               <div v-if="activeMenuIndex === idx" class="telegram-menu" @click.stop>
-                <button class="menu-item" @click="handleCopy(msg.text)">复制文本</button>
+                <button class="menu-item" @click="handleCopy(msg.text)">
+                  <!-- 复制图标 -->
+                  <svg viewBox="0 0 24 24" class="menu-icon"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg>
+                  复制文本
+                </button>
+                
+                <!-- 暗光细分割线 -->
+                <div v-if="msg.self && msg.id" class="menu-divider"></div>
+                
                 <button v-if="msg.self && msg.id" class="menu-item delete-btn" @click="handleRecall(msg.id, idx)">
+                  <!-- 撤回/垃圾桶图标 -->
+                  <svg viewBox="0 0 24 24" class="menu-icon"><path d="M12 2C6.47 2 2 6.47 2 12s4.47 10 10 10 10-4.47 10-10S17.53 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/></svg>
                   撤回消息
                 </button>
               </div>
@@ -125,7 +134,7 @@
 
     </div>
 
-    <!-- 个人主页弹窗 -->
+    <!-- 个人主页弹窗 (Profile) -->
     <div v-if="activeProfile" class="modal-backdrop" @click.self="activeProfile = null">
       <div class="modal-card">
         <button class="modal-close" @click="activeProfile = null">✕</button>
@@ -157,7 +166,7 @@ import { ref, reactive, onMounted, onUnmounted, nextTick, computed, watch } from
 import { useAuthStore } from '../store/auth'
 import { useChatStore } from '../store/chat'
 import { formatLocalTime } from '../utils/date'
-import { apiFetch } from '../utils/api' // 💡 引入封装的请求拦截器，一站式保障凭证过期重定向
+import { apiFetch } from '../utils/api'
 
 const WS_BASE  = import.meta.env.VITE_WS_BASE || 'ws://127.0.0.1:3000'
 
@@ -244,22 +253,46 @@ const handleRecall = (messageId, index) => {
     text: '你撤回了一条消息'
   })
 
-  // 💡 撤回后，同步重写最新一条摘要，并更新缓存
   updateLastMessage(selectedContact.value, '你撤回了一条消息', true, '', true)
   chatStore.setHistory(selectedContact.value, [...messages])
 }
 
-// 💡 3. API重构：使用全局拦截器 apiFetch，代码缩短一半，自动捕获401跳转
 const fetchFriends = async () => {
   try {
     const res = await apiFetch('/chat/friends')
     const data = await res.json()
     if (res.ok) {
+      // 💡 5. 【前端安全垫机制】：如果后端还未部署完毕，last_message 为空，
+      // 前端会自动从本地的历史聊天缓存里提取最后一条并自动翻译、展示！彻底消灭“点击开始对话”的Bug！
       const friendsWithUnread = data.friends.map(f => {
         const existing = friends.value.find(cf => cf.username === f.username)
+        
+        let finalLastMsg = f.last_message || ''
+        let finalLastTime = f.last_message_time || ''
+        
+        // 如果后端返回空，本地读取历史缓存补齐
+        if (!finalLastMsg) {
+          const history = chatStore.cachedHistory[f.username] || []
+          if (history.length > 0) {
+            const last = history[history.length - 1]
+            if (!last.system) {
+              const prefix = last.self ? '我' : (f.nickname || f.username)
+              let text = last.text
+              if (text.startsWith('data:image/')) text = '[图片]'
+              else if (text.length > 15) text = text.substring(0, 15) + '...'
+              finalLastMsg = `${prefix}: ${text}`
+              finalLastTime = last.time.split(' ')[1] || ''
+            } else {
+              finalLastMsg = last.text
+            }
+          }
+        }
+
         return {
           ...f,
-          unread: existing ? existing.unread : 0
+          unread: existing ? existing.unread : 0,
+          last_message: finalLastMsg,
+          last_message_time: finalLastTime
         }
       })
       chatStore.setFriends(friendsWithUnread)
@@ -294,9 +327,10 @@ const addFriend = async () => {
 
 const selectContact = async (friendUsername) => {
   selectedContact.value = friendUsername
-  messages.length = 0
   
+  // 缓存优先
   const cachedHistory = chatStore.cachedHistory[friendUsername] || []
+  messages.length = 0
   messages.push(...cachedHistory)
   scrollToBottom()
 
@@ -371,7 +405,6 @@ const connectChat = () => {
           text: '对方撤回了一条消息'
         })
         chatStore.setHistory(selectedContact.value, [...messages])
-        // 💡 实时更新接收方列表的最新消息摘要
         updateLastMessage(data.from, '对方撤回了一条消息', false, '', true)
       }
       return
@@ -392,7 +425,6 @@ const connectChat = () => {
         scrollToBottom()
         chatStore.setHistory(selectedContact.value, [...messages])
 
-        // 💡 实时更新对方发来的最新一条消息在列表上的展示
         updateLastMessage(data.from, data.message, false)
 
         ws.send(JSON.stringify({ type: "read", to: data.from }))
@@ -403,8 +435,6 @@ const connectChat = () => {
           chatStore.setFriends(friends.value)
         }
         triggerTitleFlash()
-        
-        // 💡 即使未打开会话，只要收到在线消息，列表最新一条也实时同步刷新
         updateLastMessage(data.from, data.message, false)
       }
     }
@@ -415,7 +445,6 @@ const connectChat = () => {
   }
 }
 
-// 💡 4. 前端核心：高保真最新消息实时同步控制器 (自动处理图片过滤、超长文本截取与 Pinia 同步)
 const updateLastMessage = (friendUsername, text, isSelf = false, timeStr = '', isSystemNotice = false) => {
   const friend = friends.value.find(f => f.username === friendUsername)
   if (!friend) return
@@ -434,7 +463,6 @@ const updateLastMessage = (friendUsername, text, isSelf = false, timeStr = '', i
     friend.last_message = `${prefix}: ${displayMsg}`
   }
 
-  // 整理最新消息的缩写时间戳 (取 HH:MM)
   let timeLabel = ""
   if (timeStr) {
     timeLabel = timeStr.split(' ')[1] || ""
@@ -443,8 +471,7 @@ const updateLastMessage = (friendUsername, text, isSelf = false, timeStr = '', i
     timeLabel = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`
   }
   friend.last_message_time = timeLabel
-
-  // 💡 同步提交给全局缓存，保障 0 毫秒秒开不受影响
+  
   chatStore.setFriends(friends.value)
 }
 
@@ -464,25 +491,24 @@ const sendMessage = () => {
     is_read: false 
   })
   
-  // 💡 实时更新左侧联系人卡片的最新消息为“我：刚才发的内容”
-  updateLastMessage(selectedContact.value, text, true)
-
   nextTick(async () => {
     try {
-      const res = await apiFetch(`/chat/history/${selectedContact.value}`)
+      const res = await fetch(`${API_BASE}/chat/history/${selectedContact.value}`, {
+        headers: { 'Authorization': `Bearer ${authStore.token}` }
+      })
       const data = await res.json()
       if (res.ok) {
         const localizedHistory = data.history.map(msg => ({
           ...msg,
           time: formatLocalTime(msg.time)
         }))
-        chatStore.setHistory(selectedContact.value, [...localizedHistory])
+        chatStore.setHistory(selectedContact.value, localizedHistory)
         messages.length = 0
         messages.push(...localizedHistory)
         scrollToBottom()
       }
-    } catch (err) {
-      console.error('获取历史记录失败:', err)
+    } catch (e) {
+      console.error(e)
     }
   })
 
@@ -493,8 +519,8 @@ const sendMessage = () => {
 const openUserProfile = async (targetUsername) => {
   try {
     const [profileRes, postsRes] = await Promise.all([
-      apiFetch(`/auth/profile/${targetUsername}`),
-      apiFetch(`/moments/user/${targetUsername}`)
+      fetch(`${API_BASE}/auth/profile/${targetUsername}`),
+      fetch(`${API_BASE}/moments/user/${targetUsername}`)
     ])
     if (profileRes.ok && postsRes.ok) {
       const user = await profileRes.json()
@@ -536,12 +562,11 @@ const handleImageUpload = (event) => {
       is_read: false
     })
     
-    // 💡 发图时，侧边栏实时展示 "[图片]" 缩略字
-    updateLastMessage(selectedContact.value, base64Data, true)
-
     nextTick(async () => {
       try {
-        const res = await apiFetch(`/chat/history/${selectedContact.value}`)
+        const res = await fetch(`${API_BASE}/chat/history/${selectedContact.value}`, {
+          headers: { 'Authorization': `Bearer ${authStore.token}` }
+        })
         const data = await res.json()
         if (res.ok) {
           const localizedHistory = data.history.map(msg => ({ ...msg, time: formatLocalTime(msg.time) }))
@@ -642,7 +667,7 @@ const getCurrentTimeLabel = () => {
 .contact-name { font-weight: bold; font-size: 0.95rem; color: var(--x-text-main); }
 .contact-time-sub { font-size: 0.75rem; color: var(--x-text-gray); margin-left: 8px; }
 
-/* 💡 新增：最新消息单行截取点缀 */
+/* 最新消息单行截取 */
 .contact-last-msg {
   font-size: 0.8rem;
   color: var(--x-text-gray);
@@ -713,7 +738,7 @@ const getCurrentTimeLabel = () => {
 .peer-row { justify-content: flex-start; }
 .sys-row { justify-content: center; }
 
-/* 消息气泡修剪 */
+/* 气泡修剪 */
 .msg-bubble {
   max-width: 70%; padding: 10px 14px; font-size: 0.95rem; line-height: 1.4; word-wrap: break-word; 
   position: relative; 
@@ -736,20 +761,52 @@ const getCurrentTimeLabel = () => {
 .peer-row .msg-meta { justify-content: flex-end; }
 .peer-row .msg-time { color: var(--x-text-gray); }
 
-/* 撤回按钮样式 */
-.btn-recall {
-  color: #a7f3d0;
-  cursor: pointer;
-  font-weight: bold;
-  opacity: 0.8;
-  margin-left: 2px;
+/* 🌟 Telegram 风格气泡操作菜单样式 */
+.telegram-menu {
+  position: absolute;
+  bottom: calc(100% + 4px); /* 悬浮在消息气泡上方 */
+  background: rgba(15, 20, 25, 0.96); /* 𝕏 经典深邃蓝黑 */
+  backdrop-filter: blur(12px);
+  border-radius: 14px;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.25);
+  padding: 6px;
+  z-index: 210;
+  display: flex;
+  flex-direction: column;
+  min-width: 120px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  animation: pop-menu 0.15s cubic-bezier(0.175, 0.885, 0.32, 1.15);
 }
-.btn-recall:hover {
-  text-decoration: underline;
-  opacity: 1;
+@keyframes pop-menu {
+  0% { transform: scale(0.9) translateY(5px); opacity: 0; }
+  100% { transform: scale(1) translateY(0); opacity: 1; }
 }
+/* 左右对齐微调 */
+.self-row .telegram-menu { right: 8px; transform-origin: bottom right; }
+.peer-row .telegram-menu { left: 8px; transform-origin: bottom left; }
 
-/* 系统灰色提示丸子（撤回时显示） */
+.menu-item {
+  background: transparent;
+  border: none;
+  padding: 10px 14px;
+  text-align: left;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  color: #ffffff;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  transition: background 0.15s;
+}
+.menu-item:hover { background: rgba(255, 255, 255, 0.1); }
+.menu-icon { width: 16px; height: 16px; fill: currentColor; }
+.menu-divider { height: 1px; background: rgba(255, 255, 255, 0.08); margin: 4px 6px; }
+.menu-item.delete-btn { color: #ff4d4f; }
+.menu-item.delete-btn:hover { background: rgba(255, 77, 79, 0.15); }
+
+/* 系统灰色提示 */
 .sys-notice {
   font-size: 0.8rem;
   color: var(--x-text-gray);
