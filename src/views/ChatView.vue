@@ -66,7 +66,7 @@
             </button>
             <div class="header-info" @click="openUserProfile(selectedContact)" style="cursor: pointer;">
               <span class="header-name">{{ selectedContactProfile?.nickname || selectedContact }}</span>
-              <span class="header-status">@{{ selectedContact }} · {{ connected ? '实时在线' : '离线接收' }}</span>
+              <span class="header-status">@{{ selectedContact }} · {{ connected ? '实时在线' : '离线' }}</span>
             </div>
           </div>
           <button v-if="!connected" @click="connectChat" class="btn-reconnect">重连</button>
@@ -76,16 +76,26 @@
         <div class="chat-body" id="chatFlow">
           <div v-for="(msg, idx) in messages" :key="idx" 
                :class="['message-row', msg.system ? 'sys-row' : (msg.self ? 'self-row' : 'peer-row')]">
+            
+            <!-- 正常聊天气泡 -->
             <div v-if="!msg.system" class="msg-bubble">
               <img v-if="isImage(msg.text)" :src="msg.text" class="chat-img" @load="scrollToBottom" />
               <span v-else>{{ msg.text }}</span>
+              
+              <!-- 气泡底部元数据栏 -->
               <div class="msg-meta">
                 <span v-if="msg.self" :class="['read-status', { 'status-read': msg.is_read }]">
                   {{ msg.is_read ? '已读' : '未读' }}
                 </span>
+                <!-- 💡 新增：撤回按钮（仅限自己发的、不是系统提示、且含有具体ID的消息） -->
+                <span v-if="msg.self && msg.id" class="btn-recall" @click="recallMessage(msg.id, idx)">
+                  撤回
+                </span>
                 <span class="msg-time">{{ msg.time }}</span>
               </div>
             </div>
+            
+            <!-- 撤回/系统提示气泡 (优雅的灰色药丸字) -->
             <div v-else class="sys-notice">{{ msg.text }}</div>
           </div>
         </div>
@@ -152,10 +162,7 @@ const showAddModal = ref(false)
 const newFriendUsername = ref('')
 
 const friends = ref(chatStore.cachedFriends)
-
-// 💡 核心修改：让当前选中的联系人直接与全局活跃窗口状态进行双向绑定（状态记忆）
 const selectedContact = ref(chatStore.activeContact)
-
 const messageInput = ref('')
 const messages = reactive([])
 let ws = null
@@ -163,7 +170,6 @@ let ws = null
 const fileInput = ref(null)
 const activeProfile = ref(null)
 
-// 浏览器标题闪烁变量
 let titleInterval = null
 const originalTitle = document.title || "DRIVE Space"
 
@@ -171,7 +177,6 @@ const selectedContactProfile = computed(() => {
   return friends.value.find(f => f.username === selectedContact.value)
 })
 
-// 监听本地的选择框，实时通知 Pinia 记忆住当前正在聊天的对象
 watch(selectedContact, (newVal) => {
   chatStore.setActiveContact(newVal)
 })
@@ -179,8 +184,6 @@ watch(selectedContact, (newVal) => {
 onMounted(() => {
   fetchFriends()
   connectChat()
-  
-  // 💡 核心修改：如果上一次退出页面时开着某个人的对话框，进来时自动 0ms 秒开恢复！
   if (selectedContact.value) {
     selectContact(selectedContact.value)
   }
@@ -191,7 +194,6 @@ onUnmounted(() => {
   stopTitleFlash()
 })
 
-// 获取联系人列表
 const fetchFriends = async () => {
   try {
     const res = await fetch(`${API_BASE}/chat/friends`, {
@@ -218,7 +220,7 @@ const addFriend = async () => {
   const friend = newFriendUsername.value.trim()
   if (!friend) return
   try {
-    const res = await fetch(`${API_BASE}/add-friend`, {
+    const res = await fetch(`${API_BASE}/chat/add-friend`, {
       method: 'POST',
       headers: { 
         'Content-Type': 'application/json',
@@ -240,17 +242,15 @@ const addFriend = async () => {
   }
 }
 
-// 选中联系人：💡 历史记录 SWR 升级（缓存秒开 ＋ 后台静默重验证）
 const selectContact = async (friendUsername) => {
   selectedContact.value = friendUsername
   
-  // 💡 核心升级：1. 先去全局 Pinia 缓存里提取这个人的历史对话，实现 0ms 瞬间秒渲染！
+  // 缓存优先
   const cachedHistory = chatStore.cachedHistory[friendUsername] || []
   messages.length = 0
   messages.push(...cachedHistory)
   scrollToBottom()
 
-  // 未读数清零
   const friend = friends.value.find(f => f.username === friendUsername)
   if (friend) {
     friend.unread = 0
@@ -262,12 +262,10 @@ const selectContact = async (friendUsername) => {
     stopTitleFlash()
   }
 
-  // 补发已读回执
   if (connected.value && ws) {
     ws.send(JSON.stringify({ type: "read", to: friendUsername }))
   }
 
-  // 💡 核心升级：2. 默默在后台拉取数据库中的真实历史（重验证），数据传回后进行静默补齐与更新
   try {
     const res = await fetch(`${API_BASE}/chat/history/${friendUsername}`, {
       headers: { 'Authorization': `Bearer ${authStore.token}` }
@@ -278,17 +276,13 @@ const selectContact = async (friendUsername) => {
         ...msg,
         time: formatLocalTime(msg.time)
       }))
-      
-      // 更新全局 Pinia 缓存
       chatStore.setHistory(friendUsername, localizedHistory)
-      
-      // 静默更新页面，完全消除空白重载感
       messages.length = 0
       messages.push(...localizedHistory)
       scrollToBottom()
     }
   } catch (err) {
-    console.error('后台加载历史聊天记录失败:', err)
+    console.error('获取历史记录失败:', err)
   }
 }
 
@@ -296,13 +290,11 @@ const connectChat = () => {
   if (!authStore.username) return
   if (ws) ws.close()
   
-  messages.push({ system: true, text: '🔌 正在与实时会话网关联络...' })
-  
+  // 💡 注销了之前的 messages.push 系统调试日志，让对话历史极度纯净
   ws = new WebSocket(`${WS_BASE}/chat/ws/${authStore.username}`)
   
   ws.onopen = () => {
     connected.value = true
-    messages.push({ system: true, text: '🟢 私信通道已安全建立。' })
     if (selectedContact.value) {
       ws.send(JSON.stringify({ type: "read", to: selectedContact.value }))
     }
@@ -312,7 +304,7 @@ const connectChat = () => {
     const data = JSON.parse(event.data)
     playNotificationSound()
 
-    // 接收到已读回执：将对应的消息本地更新，并【同步写入全局历史缓存】
+    // 1. 处理已读回执
     if (data.type === 'read') {
       if (selectedContact.value === data.from) {
         messages.forEach(msg => {
@@ -320,12 +312,27 @@ const connectChat = () => {
             msg.is_read = true
           }
         })
-        // 💡 实时同步写入缓存，保障下次点击时直接是已读状态
         chatStore.setHistory(selectedContact.value, [...messages])
       }
       return
     }
 
+    // 💡 2. 新增处理：收到对方撤回消息的回执包
+    if (data.type === 'recall') {
+      const recalledId = data.message_id
+      const msgIndex = messages.findIndex(m => m.id === recalledId)
+      if (msgIndex !== -1) {
+        // 使用 splice 响应式替换该条数据为系统提示
+        messages.splice(msgIndex, 1, {
+          system: true,
+          text: '对方撤回了一条消息'
+        })
+        chatStore.setHistory(selectedContact.value, [...messages])
+      }
+      return
+    }
+
+    // 3. 处理普通消息包
     const isMsg = !data.type || data.type === 'msg'
     if (isMsg) {
       if (selectedContact.value === data.from) {
@@ -339,8 +346,6 @@ const connectChat = () => {
           is_read: true 
         })
         scrollToBottom()
-        
-        // 💡 实时同步写入缓存
         chatStore.setHistory(selectedContact.value, [...messages])
 
         ws.send(JSON.stringify({ type: "read", to: data.from }))
@@ -357,8 +362,28 @@ const connectChat = () => {
 
   ws.onclose = () => {
     connected.value = false
-    messages.push({ system: true, text: '🔴 连接断开，可点击右上角重新连接。' })
   }
+}
+
+// 💡 前端主动触发撤回
+const recallMessage = (messageId, index) => {
+  if (!connected.value || !ws || !selectedContact.value) return
+
+  // 发送撤回数据包
+  ws.send(JSON.stringify({
+    type: "recall",
+    to: selectedContact.value,
+    message_id: messageId
+  }))
+
+  // 本地响应式替换该条消息为系统灰色提示字
+  messages.splice(index, 1, {
+    system: true,
+    text: '你撤回了一条消息'
+  })
+
+  // 同步写入全局历史缓存
+  chatStore.setHistory(selectedContact.value, [...messages])
 }
 
 const triggerTitleFlash = () => {
@@ -394,7 +419,7 @@ const playNotificationSound = () => {
     }
     playSynthPing(audioCtx)
   } catch (err) {
-    console.warn('自动播放音效受阻:', err)
+    console.warn('音效阻碍:', err)
   }
 }
 
@@ -419,6 +444,7 @@ const sendMessage = () => {
 
   ws.send(JSON.stringify({ to: selectedContact.value, message: text }))
   
+  // 发送成功后，本地追加
   messages.push({ 
     from: authStore.username, 
     text: text, 
@@ -428,8 +454,29 @@ const sendMessage = () => {
     is_read: false 
   })
   
-  // 💡 实时同步写入缓存
-  chatStore.setHistory(selectedContact.value, [...messages])
+  // 必须重新调用 get_chat_history 等待新消息分配到具体 ID 后，才会由后台进行 ID 同步更新。
+  // 为了让用户在发送完的瞬间【立即可撤回】，我们需要在消息成功发出并拿到 ID 后进行重绑定。
+  // 下方的 fetch 专门用于更新本地最后一条消息的数据库真实 ID，确保“发送完可以立刻撤回”。
+  nextTick(async () => {
+    try {
+      const res = await fetch(`${API_BASE}/chat/history/${selectedContact.value}`, {
+        headers: { 'Authorization': `Bearer ${authStore.token}` }
+      })
+      const data = await res.json()
+      if (res.ok) {
+        const localizedHistory = data.history.map(msg => ({
+          ...msg,
+          time: formatLocalTime(msg.time)
+        }))
+        chatStore.setHistory(selectedContact.value, localizedHistory)
+        messages.length = 0
+        messages.push(...localizedHistory)
+        scrollToBottom()
+      }
+    } catch (e) {
+      console.error(e)
+    }
+  })
 
   messageInput.value = ''
   scrollToBottom()
@@ -481,8 +528,22 @@ const handleImageUpload = (event) => {
       is_read: false
     })
     
-    // 💡 实时同步写入缓存
-    chatStore.setHistory(selectedContact.value, [...messages])
+    // 发图后同样拉取一次同步真实 ID，保证发图能瞬间撤回
+    nextTick(async () => {
+      try {
+        const res = await fetch(`${API_BASE}/chat/history/${selectedContact.value}`, {
+          headers: { 'Authorization': `Bearer ${authStore.token}` }
+        })
+        const data = await res.json()
+        if (res.ok) {
+          const localizedHistory = data.history.map(msg => ({ ...msg, time: formatLocalTime(msg.time) }))
+          chatStore.setHistory(selectedContact.value, localizedHistory)
+          messages.length = 0
+          messages.push(...localizedHistory)
+          scrollToBottom()
+        }
+      } catch (e) { console.error(e) }
+    })
 
     scrollToBottom()
   }
@@ -629,25 +690,48 @@ const getCurrentTimeLabel = () => {
 .peer-row { justify-content: flex-start; }
 .sys-row { justify-content: center; }
 
-/* 💡 已读未读消息气泡修剪 */
+/* 消息气泡修剪 */
 .msg-bubble {
   max-width: 70%; padding: 10px 14px; font-size: 0.95rem; line-height: 1.4; word-wrap: break-word; position: relative;
 }
 .self-row .msg-bubble { background: var(--x-blue); color: white; border-radius: 18px 18px 2px 18px; }
 .peer-row .msg-bubble { background: #eff3f4; color: var(--x-text-main); border-radius: 18px 18px 18px 2px; }
 
-/* 🌟 已读未读元数据整合排版 */
+/* 消息元数据排版 */
 .msg-meta {
   display: flex; align-items: center; justify-content: flex-end; gap: 6px; margin-top: 4px; font-size: 0.7rem;
 }
-.read-status { opacity: 0.6; color: #fca5a5; font-weight: bold; } /* 未读时呈淡淡粉色，温和 */
-.read-status.status-read { color: #a7f3d0; opacity: 0.8; }        /* 已读时呈淡雅绿 */
+.read-status { opacity: 0.6; color: #fca5a5; font-weight: bold; } 
+.read-status.status-read { color: #a7f3d0; opacity: 0.8; }        
 .msg-time { display: block; opacity: 0.7; text-align: right; }
 
 /* 对方发送的消息不展示已读状态 */
 .peer-row .read-status { display: none !important; }
 .peer-row .msg-meta { justify-content: flex-end; }
 .peer-row .msg-time { color: var(--x-text-gray); }
+
+/* 💡 新增：撤回小按钮样式 */
+.btn-recall {
+  color: #a7f3d0;
+  cursor: pointer;
+  font-weight: bold;
+  opacity: 0.8;
+  margin-left: 2px;
+}
+.btn-recall:hover {
+  text-decoration: underline;
+  opacity: 1;
+}
+
+/* 🌟 系统灰色提示丸子（撤回时显示） */
+.sys-notice {
+  font-size: 0.8rem;
+  color: var(--x-text-gray);
+  background: #f7f9fa;
+  padding: 4px 14px;
+  border-radius: 9999px;
+  font-style: italic; /* 斜体增加质感 */
+}
 
 .chat-img {
   max-width: 100%; max-height: 220px; border-radius: 12px; display: block; margin-top: 4px; cursor: pointer;
@@ -699,9 +783,5 @@ const getCurrentTimeLabel = () => {
   .contacts-sidebar { width: 280px; }
   .chat-main { flex: 1; }
   .btn-back { display: none !important; }
-}
-/* 这里保持原有的 ChatView CSS 样式不变 */
-.avatar-img-el {
-  width: 100%; height: 100%; object-fit: cover; border-radius: 50%;
 }
 </style>
