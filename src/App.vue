@@ -60,11 +60,11 @@
           </router-link>
 
           <!-- 个人资料 -->
-          <router-link to="/auth" class="sidebar-link" active-class="active">
+         <router-link to="/auth" class="sidebar-link" active-class="active">
             <span class="icon">
               <svg viewBox="0 0 24 24" class="svg-icon"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>
             </span>
-            <span class="text">个人资料</span>
+            <span class="text">个人资料</span> <!-- 💡 修改为 个人资料 -->
           </router-link>
 
           <!-- PC 大发帖按钮 -->
