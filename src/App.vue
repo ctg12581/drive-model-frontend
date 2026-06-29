@@ -144,7 +144,7 @@
 </template>
 
 <script setup>
-import { onMounted, watch } from 'vue'
+import { ref, onMounted, watch } from 'vue' 
 import { useAuthStore } from './store/auth'
 import { useChatStore } from './store/chat'
 import { useRouter, useRoute } from 'vue-router'
