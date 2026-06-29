@@ -1,4 +1,4 @@
-// src/store/chat.js
+// src/store/chat.js (完整订正无错版代码)
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { useAuthStore } from './auth'
@@ -44,14 +44,14 @@ export const useChatStore = defineStore('chat', () => {
     }
   }
 
-  // 💡 核心升级 A：将获取好友列表移入全局，直接以数据库计算的 unread 值为绝对基准！
-  async function fetchFriendsGlobal() {
+  // 💡 命名修复：将 fetchFriendsGlobal 重新统一对齐命名为 fetchFriends
+  async function fetchFriends() {
     if (!authStore.isLoggedIn) return
     try {
       const res = await apiFetch('/chat/friends')
       const data = await res.json()
       if (res.ok) {
-        // 直接使用后端数据库计算好、100% 绝对精准的未读数，彻底消灭前端计算覆写导致的消失Bug！
+        // 严格遵循并信任后端的数据库精准未读数
         setFriends(data.friends)
       }
     } catch (err) {
@@ -84,7 +84,7 @@ export const useChatStore = defineStore('chat', () => {
       connected.value = true
       fetchPendingRequestsCount()
       // 连接成功后，也静默拉取一次最新好友列表与未读数
-      fetchFriends()
+      fetchFriends() 
       // 每 20 秒一次的待批准通知长轮询
       setInterval(fetchPendingRequestsCount, 20000)
       if (activeContact.value) {
@@ -135,6 +135,7 @@ export const useChatStore = defineStore('chat', () => {
       const isMsg = !data.type || data.type === 'msg'
       if (isMsg) {
         if (activeContact.value === data.from) {
+          // 如果用户当前正好在跟发送人热聊中：直接塞入活跃会话流并自动已读
           activeMessages.value.push({
             id: data.id,
             from: data.from,
@@ -153,9 +154,8 @@ export const useChatStore = defineStore('chat', () => {
             friend.unread = (friend.unread || 0) + 1
             setFriends([...cachedFriends.value])
           } else {
-            // 💡 极其重要：如果在当前联系人列表中找不到发送人（说明是新加的好友），
-            // 立刻在后台静默重拉好友列表，保证新好友能够瞬间出现并弹红点！
-            fetchFriends()
+            // 💡 容灾：如果是全新好友（或者本地缓存没有此人），立刻重新拉取一次好友列表
+            fetchFriends() 
           }
         }
         updateLastMessageState(data.from, data.message, false)
@@ -179,6 +179,7 @@ export const useChatStore = defineStore('chat', () => {
     }
   }
 
+  // 统一通过常驻 WebSocket 实例向后端发送数据
   function sendWebSocketPayload(payload) {
     if (ws.value && connected.value) {
       ws.value.send(JSON.stringify(payload))
@@ -231,7 +232,7 @@ export const useChatStore = defineStore('chat', () => {
       }
       playSynthPing(audioCtx)
     } catch (err) {
-      console.warn('播放被拦:', err)
+      console.warn('音效拦截:', err)
     }
   }
 
