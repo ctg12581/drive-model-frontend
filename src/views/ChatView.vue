@@ -79,6 +79,7 @@
           <div v-for="(msg, idx) in messages" :key="idx" 
                :class="['message-row', msg.system ? 'sys-row' : (msg.self ? 'self-row' : 'peer-row')]">
             
+            <!-- 气泡主体 -->
             <div v-if="!msg.system" class="msg-bubble" @click.stop="toggleMessageMenu(idx)">
               <img v-if="isImage(msg.text)" :src="msg.text" class="chat-img" @load="scrollToBottom" />
               <span v-else>{{ msg.text }}</span>
@@ -86,10 +87,13 @@
                 <span v-if="msg.self" :class="['read-status', { 'status-read': msg.is_read }]">
                   {{ msg.is_read ? '已读' : '未读' }}
                 </span>
+                <span v-if="msg.self && msg.id" class="btn-recall" @click="handleRecall(msg.id, idx)">
+                  撤回
+                </span>
                 <span class="msg-time">{{ msg.time }}</span>
               </div>
 
-              <!-- Telegram 风格操作菜单 -->
+              <!-- Telegram 风格气泡操作菜单 -->
               <div v-if="activeMenuIndex === idx" class="telegram-menu" @click.stop>
                 <button class="menu-item" @click="handleCopy(msg.text)">
                   <svg viewBox="0 0 24 24" class="menu-icon"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg>
@@ -103,7 +107,7 @@
               </div>
             </div>
             
-            <!-- 撤回提示 -->
+            <!-- 撤回系统提示 -->
             <div v-else class="sys-notice">{{ msg.text }}</div>
           </div>
         </div>
@@ -157,7 +161,7 @@
 <script setup>
 import { ref, onMounted, onUnmounted, nextTick, computed, watch } from 'vue'
 import { useAuthStore } from '../store/auth'
-import { useChatStore } from '../store/chat'  // 💡 引入全局常驻聊吧状态
+import { useChatStore } from '../store/chat'
 import { formatLocalTime } from '../utils/date'
 import { apiFetch } from '../utils/api'
 
@@ -170,7 +174,7 @@ const friends = ref(chatStore.cachedFriends)
 const selectedContact = ref(chatStore.activeContact)
 const messageInput = ref('')
 
-// 💡 路由解耦：让消息变量直接共享绑定全局活性会话流
+// 路由解耦：让消息变量直接共享绑定全局活性会话流
 const messages = computed(() => chatStore.activeMessages)
 
 const fileInput = ref(null)
@@ -187,6 +191,7 @@ watch(selectedContact, (newVal) => {
 
 onMounted(() => {
   fetchFriends()
+  // 💡 核心修复：移除了残留的 connectChat()。由于全局连接已由 App.vue 负责，这里绝不再发生 ReferenceError 崩溃！
   if (selectedContact.value) {
     selectContact(selectedContact.value)
   }
@@ -227,7 +232,7 @@ const handleRecall = (messageId, index) => {
     return
   }
 
-  // 💡 调用全局通道发送
+  // 调用全局通道发送
   chatStore.sendWebSocketPayload({
     type: "recall",
     to: selectedContact.value,
@@ -314,7 +319,7 @@ const selectContact = async (friendUsername) => {
   
   // 缓存优先
   const cachedHistory = chatStore.cachedHistory[friendUsername] || []
-  chatStore.activeMessages = [...cachedHistory] 
+  chatStore.activeMessages = [...cachedHistory]
   scrollToBottom()
 
   const friend = friends.value.find(f => f.username === friendUsername)
@@ -324,7 +329,7 @@ const selectContact = async (friendUsername) => {
     chatStore.setFriends(friends.value)
   }
 
-  // 💡 调用全局通道发送已读包
+  // 调用全局通道发送已读包
   chatStore.sendWebSocketPayload({ type: "read", to: friendUsername })
 
   try {
@@ -336,7 +341,7 @@ const selectContact = async (friendUsername) => {
         time: formatLocalTime(msg.time)
       }))
       chatStore.setHistory(friendUsername, localizedHistory)
-      chatStore.activeMessages = [...localizedHistory] 
+      chatStore.activeMessages = [...localizedHistory]
       scrollToBottom()
     }
   } catch (err) {
@@ -344,19 +349,20 @@ const selectContact = async (friendUsername) => {
   }
 }
 
+// 💡 彻底修复的 sendMessage（纯前端推送缓存，不包含阻碍可见性的 nextTick 拉取任务）
 const sendMessage = () => {
   if (!chatStore.connected || !selectedContact.value) return
   const text = messageInput.value.trim()
   if (!text) return
 
-  // 💡 调用全局常驻通道安全发送
+  // 调用全局常驻通道安全发送
   chatStore.sendWebSocketPayload({
     type: "msg",
     to: selectedContact.value,
     message: text
   })
   
-  // 压入全局流
+  // 💡 直接追加到本地，id 为 null（防止网络竞争覆盖。消息100%瞬间留在屏幕上，绝不消失）
   chatStore.activeMessages.push({ 
     id: null,
     from: authStore.username, 
@@ -367,26 +373,11 @@ const sendMessage = () => {
     is_read: false 
   })
   
-  chatStore.updateLastMessageState(selectedContact.value, text, true)
+  // 实时同步刷新左侧最新一条状态
+  updateLastMessage(selectedContact.value, text, true)
+  
+  // 实时写入内存，防止切路由数据倒流
   chatStore.setHistory(selectedContact.value, [...chatStore.activeMessages])
-
-  nextTick(async () => {
-    try {
-      const res = await apiFetch(`/chat/history/${selectedContact.value}`)
-      const data = await res.json()
-      if (res.ok) {
-        const localizedHistory = data.history.map(msg => ({
-          ...msg,
-          time: formatLocalTime(msg.time)
-        }))
-        chatStore.setHistory(selectedContact.value, localizedHistory)
-        chatStore.activeMessages = [...localizedHistory]
-        scrollToBottom()
-      }
-    } catch (e) {
-      console.error(e)
-    }
-  })
 
   messageInput.value = ''
   scrollToBottom()
@@ -415,6 +406,7 @@ const triggerImageSelect = () => {
   if (fileInput.value) { fileInput.value.click() }
 }
 
+// 💡 同样彻底修复的 handleImageUpload，抹除 nextTick 耗时重拉
 const handleImageUpload = (event) => {
   const file = event.target.files[0]
   if (!file) return
@@ -429,13 +421,14 @@ const handleImageUpload = (event) => {
   reader.onload = () => {
     const base64Data = reader.result
     
-    // 💡 全局通道发图
+    // 全局通道发图
     chatStore.sendWebSocketPayload({
       type: "msg",
       to: selectedContact.value,
       message: base64Data
     })
     
+    // 💡 本地直接追加
     chatStore.activeMessages.push({
       id: null,
       from: authStore.username,
@@ -446,21 +439,11 @@ const handleImageUpload = (event) => {
       is_read: false
     })
     
-    chatStore.updateLastMessageState(selectedContact.value, base64Data, true)
+    // 侧边栏摘要更新
+    updateLastMessage(selectedContact.value, base64Data, true)
+    
+    // 写入内存
     chatStore.setHistory(selectedContact.value, [...chatStore.activeMessages])
-
-    nextTick(async () => {
-      try {
-        const res = await apiFetch(`/chat/history/${selectedContact.value}`)
-        const data = await res.json()
-        if (res.ok) {
-          const localizedHistory = data.history.map(msg => ({ ...msg, time: formatLocalTime(msg.time) }))
-          chatStore.setHistory(selectedContact.value, localizedHistory)
-          chatStore.activeMessages = [...localizedHistory]
-          scrollToBottom()
-        }
-      } catch (e) { console.error(e) }
-    })
 
     scrollToBottom()
   }
@@ -492,7 +475,6 @@ const getCurrentTimeLabel = () => {
   return `${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`
 }
 </script>
-
 
 <style scoped>
 /* 𝕏 经典分栏排版 */
