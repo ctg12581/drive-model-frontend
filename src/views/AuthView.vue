@@ -147,14 +147,13 @@ const handleSubmit = async () => {
 }
 
 // 提交个人名片更新
+import { apiFetch } from '../utils/api'
+
 const updateProfile = async () => {
   try {
-    const res = await fetch(`${API_BASE}/auth/profile`, {
+    // 💡 无需手写 Headers，无需手写 Token，无需担心过期跳转
+    const res = await apiFetch('/auth/profile', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${authStore.token}`
-      },
       body: JSON.stringify({
         nickname: profileForm.nickname.trim(),
         avatar_url: profileForm.avatar_url.trim()
@@ -162,15 +161,11 @@ const updateProfile = async () => {
     })
     const data = await res.json()
     if (res.ok) {
-      alert(data.message || '名片更新成功！')
-      // 💡 核心升级：更新成功后，立刻写入全局 Pinia 状态，全站瞬间生效！
-      authStore.updateProfileState(profileForm.nickname.trim(), profileForm.avatar_url.trim())
-    } else {
-      alert(data.detail || '更新失败')
+      alert(data.message)
     }
   } catch (err) {
+    // 401 自动在拦截器里被处理并跳转，这里只需捕获日志即可
     console.error(err)
-    alert('请求故障，无法更新个人名片')
   }
 }
 </script>
