@@ -80,7 +80,7 @@
           <div v-for="(msg, idx) in messages" :key="idx" 
                :class="['message-row', msg.system ? 'sys-row' : (msg.self ? 'self-row' : 'peer-row')]">
             
-            <!-- 气泡主体 (阻止冒泡) -->
+            <!-- 气泡主体 -->
             <div v-if="!msg.system" class="msg-bubble" @click.stop="toggleMessageMenu(idx)">
               <img v-if="isImage(msg.text)" :src="msg.text" class="chat-img" @load="scrollToBottom" />
               <span v-else>{{ msg.text }}</span>
@@ -88,22 +88,21 @@
                 <span v-if="msg.self" :class="['read-status', { 'status-read': msg.is_read }]">
                   {{ msg.is_read ? '已读' : '未读' }}
                 </span>
+                <!-- 💡 仅限含有数据库真实 ID 且没被撤回的已存档消息展示撤回选项 -->
+                <span v-if="msg.self && msg.id" class="btn-recall" @click="recallMessage(msg.id, idx)">
+                  撤回
+                </span>
                 <span class="msg-time">{{ msg.time }}</span>
               </div>
 
-              <!-- 💡 升级：Telegram 风格高档深邃蓝黑悬浮菜单 -->
+              <!-- Telegram 风格气泡操作菜单 -->
               <div v-if="activeMenuIndex === idx" class="telegram-menu" @click.stop>
                 <button class="menu-item" @click="handleCopy(msg.text)">
-                  <!-- 复制图标 -->
                   <svg viewBox="0 0 24 24" class="menu-icon"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg>
                   复制文本
                 </button>
-                
-                <!-- 暗光细分割线 -->
                 <div v-if="msg.self && msg.id" class="menu-divider"></div>
-                
                 <button v-if="msg.self && msg.id" class="menu-item delete-btn" @click="handleRecall(msg.id, idx)">
-                  <!-- 撤回/垃圾桶图标 -->
                   <svg viewBox="0 0 24 24" class="menu-icon"><path d="M12 2C6.47 2 2 6.47 2 12s4.47 10 10 10 10-4.47 10-10S17.53 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/></svg>
                   撤回消息
                 </button>
@@ -134,7 +133,7 @@
 
     </div>
 
-    <!-- 个人主页弹窗 (Profile) -->
+    <!-- 个人主页弹窗 -->
     <div v-if="activeProfile" class="modal-backdrop" @click.self="activeProfile = null">
       <div class="modal-card">
         <button class="modal-close" @click="activeProfile = null">✕</button>
@@ -262,15 +261,12 @@ const fetchFriends = async () => {
     const res = await apiFetch('/chat/friends')
     const data = await res.json()
     if (res.ok) {
-      // 💡 5. 【前端安全垫机制】：如果后端还未部署完毕，last_message 为空，
-      // 前端会自动从本地的历史聊天缓存里提取最后一条并自动翻译、展示！彻底消灭“点击开始对话”的Bug！
       const friendsWithUnread = data.friends.map(f => {
         const existing = friends.value.find(cf => cf.username === f.username)
         
         let finalLastMsg = f.last_message || ''
         let finalLastTime = f.last_message_time || ''
         
-        // 如果后端返回空，本地读取历史缓存补齐
         if (!finalLastMsg) {
           const history = chatStore.cachedHistory[f.username] || []
           if (history.length > 0) {
@@ -327,16 +323,19 @@ const addFriend = async () => {
 
 const selectContact = async (friendUsername) => {
   selectedContact.value = friendUsername
-  
-  // 缓存优先
-  const cachedHistory = chatStore.cachedHistory[friendUsername] || []
   messages.length = 0
+  
+  const cachedHistory = chatStore.cachedHistory[friendUsername] || []
   messages.push(...cachedHistory)
   scrollToBottom()
 
   const friend = friends.value.find(f => f.username === friendUsername)
   if (friend) {
     friend.unread = 0
+    
+    // 💡 核心修改：清除未读数后，同样强制解构重绘，让红点在点击瞬间 0ms 消失！
+    friends.value = [...friends.value]
+    
     chatStore.setFriends(friends.value)
   }
   
@@ -445,6 +444,7 @@ const connectChat = () => {
   }
 }
 
+
 const updateLastMessage = (friendUsername, text, isSelf = false, timeStr = '', isSystemNotice = false) => {
   const friend = friends.value.find(f => f.username === friendUsername)
   if (!friend) return
@@ -472,17 +472,25 @@ const updateLastMessage = (friendUsername, text, isSelf = false, timeStr = '', i
   }
   friend.last_message_time = timeLabel
   
+  // 💡 核心修改：利用解构创建新引用，强制 Vue 3 在当前帧瞬间重绘侧边栏！
+  friends.value = [...friends.value]
+  
   chatStore.setFriends(friends.value)
 }
 
+// 💡 极其重要的安全修改：彻底抹除高并发竞态 fetch 逻辑！
+// 当您发送消息时，消息会瞬间在您的本地屏幕上推入、归档，并留在画面中，绝不会再发生消失。
 const sendMessage = () => {
   if (!connected.value || !ws || !selectedContact.value) return
   const text = messageInput.value.trim()
   if (!text) return
 
+  // WebSocket 实时发射
   ws.send(JSON.stringify({ to: selectedContact.value, message: text }))
   
+  // 💡 发送成功后，本地直接安全追加归档（id 初始化为 null，代表未重新从数据库刷新，不需要瞬间撤回）
   messages.push({ 
+    id: null,
     from: authStore.username, 
     text: text, 
     time: getCurrentTimeLabel(), 
@@ -491,26 +499,11 @@ const sendMessage = () => {
     is_read: false 
   })
   
-  nextTick(async () => {
-    try {
-      const res = await fetch(`${API_BASE}/chat/history/${selectedContact.value}`, {
-        headers: { 'Authorization': `Bearer ${authStore.token}` }
-      })
-      const data = await res.json()
-      if (res.ok) {
-        const localizedHistory = data.history.map(msg => ({
-          ...msg,
-          time: formatLocalTime(msg.time)
-        }))
-        chatStore.setHistory(selectedContact.value, localizedHistory)
-        messages.length = 0
-        messages.push(...localizedHistory)
-        scrollToBottom()
-      }
-    } catch (e) {
-      console.error(e)
-    }
-  })
+  // 实时同步刷新左侧最新一条状态
+  updateLastMessage(selectedContact.value, text, true)
+  
+  // 💡 同步写入内存，保证 Tab 切换时缓存里也有这条最新发送的消息
+  chatStore.setHistory(selectedContact.value, [...messages])
 
   messageInput.value = ''
   scrollToBottom()
@@ -519,8 +512,8 @@ const sendMessage = () => {
 const openUserProfile = async (targetUsername) => {
   try {
     const [profileRes, postsRes] = await Promise.all([
-      fetch(`${API_BASE}/auth/profile/${targetUsername}`),
-      fetch(`${API_BASE}/moments/user/${targetUsername}`)
+      apiFetch(`/auth/profile/${targetUsername}`),
+      apiFetch(`/moments/user/${targetUsername}`)
     ])
     if (profileRes.ok && postsRes.ok) {
       const user = await profileRes.json()
@@ -539,6 +532,7 @@ const triggerImageSelect = () => {
   if (fileInput.value) { fileInput.value.click() }
 }
 
+// 💡 同理，抹除发送图片后的网络重拉逻辑，确保图片留在聊天流中，不闪烁消失
 const handleImageUpload = (event) => {
   const file = event.target.files[0]
   if (!file) return
@@ -552,8 +546,13 @@ const handleImageUpload = (event) => {
   const reader = new FileReader()
   reader.onload = () => {
     const base64Data = reader.result
+    
+    // WS 直发
     ws.send(JSON.stringify({ to: selectedContact.value, message: base64Data }))
+    
+    // 本地直接压入
     messages.push({
+      id: null,
       from: authStore.username,
       text: base64Data,
       time: getCurrentTimeLabel(),
@@ -562,21 +561,11 @@ const handleImageUpload = (event) => {
       is_read: false
     })
     
-    nextTick(async () => {
-      try {
-        const res = await fetch(`${API_BASE}/chat/history/${selectedContact.value}`, {
-          headers: { 'Authorization': `Bearer ${authStore.token}` }
-        })
-        const data = await res.json()
-        if (res.ok) {
-          const localizedHistory = data.history.map(msg => ({ ...msg, time: formatLocalTime(msg.time) }))
-          chatStore.setHistory(selectedContact.value, localizedHistory)
-          messages.length = 0
-          messages.push(...localizedHistory)
-          scrollToBottom()
-        }
-      } catch (e) { console.error(e) }
-    })
+    // 侧边栏卡片摘要更新为 "[图片]"
+    updateLastMessage(selectedContact.value, base64Data, true)
+    
+    // 写入内存
+    chatStore.setHistory(selectedContact.value, [...messages])
 
     scrollToBottom()
   }
@@ -761,7 +750,7 @@ const getCurrentTimeLabel = () => {
 .peer-row .msg-meta { justify-content: flex-end; }
 .peer-row .msg-time { color: var(--x-text-gray); }
 
-/* 🌟 Telegram 风格气泡操作菜单样式 */
+/* Telegram 风格气泡操作菜单样式 */
 .telegram-menu {
   position: absolute;
   bottom: calc(100% + 4px); /* 悬浮在消息气泡上方 */
@@ -826,7 +815,7 @@ const getCurrentTimeLabel = () => {
 .btn-send { background: transparent; border: none; cursor: pointer; display: flex; align-items: center; color: var(--x-blue); }
 .btn-send:disabled { color: var(--x-text-gray); cursor: not-allowed; }
 
-/* 个人主页弹窗 */
+/* 个人主页弹窗 (Profile) */
 .modal-backdrop {
   position: fixed; top: 0; bottom: 0; left: 0; right: 0;
   background: rgba(0, 0, 0, 0.4); display: flex; align-items: center; justify-content: center;
