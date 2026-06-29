@@ -34,9 +34,15 @@
           
           <div class="contact-details-row">
             <div class="contact-details">
-              <div class="contact-name">{{ friend.nickname }}</div>
-              <div class="contact-handle">@{{ friend.username }}</div>
+              <div class="contact-name-row">
+                <span class="contact-name">{{ friend.nickname }}</span>
+                <!-- 💡 消息时间戳 -->
+                <span class="contact-time-sub">{{ friend.last_message_time }}</span>
+              </div>
+              <!-- 💡 展示最新一条消息摘要 -->
+              <div class="contact-last-msg">{{ friend.last_message || '点击开始对话' }}</div>
             </div>
+            <!-- 亮红色未读数徽章 -->
             <div v-if="friend.unread > 0" class="unread-badge">
               {{ friend.unread }}
             </div>
@@ -76,8 +82,6 @@
         <div class="chat-body" id="chatFlow">
           <div v-for="(msg, idx) in messages" :key="idx" 
                :class="['message-row', msg.system ? 'sys-row' : (msg.self ? 'self-row' : 'peer-row')]">
-            
-            <!-- 💡 核心升级：消息气泡阻止冒泡，点击弹出 Telegram 风格气泡菜单 -->
             <div v-if="!msg.system" class="msg-bubble" @click.stop="toggleMessageMenu(idx)">
               <img v-if="isImage(msg.text)" :src="msg.text" class="chat-img" @load="scrollToBottom" />
               <span v-else>{{ msg.text }}</span>
@@ -88,17 +92,16 @@
                 <span class="msg-time">{{ msg.time }}</span>
               </div>
 
-              <!-- 💡 Telegram 风格气泡悬浮操作菜单 (绝对定位) -->
+              <!-- Telegram 风格气泡操作菜单 -->
               <div v-if="activeMenuIndex === idx" class="telegram-menu" @click.stop>
                 <button class="menu-item" @click="handleCopy(msg.text)">复制文本</button>
-                <!-- 仅在我自己发的、且有数据库ID、未撤回时，才显示撤回 -->
                 <button v-if="msg.self && msg.id" class="menu-item delete-btn" @click="handleRecall(msg.id, idx)">
                   撤回消息
                 </button>
               </div>
             </div>
             
-            <!-- 撤回/系统提示气泡 -->
+            <!-- 撤回系统提示 -->
             <div v-else class="sys-notice">{{ msg.text }}</div>
           </div>
         </div>
@@ -122,7 +125,7 @@
 
     </div>
 
-    <!-- 个人主页弹窗 (Profile) -->
+    <!-- 个人主页弹窗 -->
     <div v-if="activeProfile" class="modal-backdrop" @click.self="activeProfile = null">
       <div class="modal-card">
         <button class="modal-close" @click="activeProfile = null">✕</button>
@@ -154,8 +157,8 @@ import { ref, reactive, onMounted, onUnmounted, nextTick, computed, watch } from
 import { useAuthStore } from '../store/auth'
 import { useChatStore } from '../store/chat'
 import { formatLocalTime } from '../utils/date'
+import { apiFetch } from '../utils/api' // 💡 引入封装的请求拦截器，一站式保障凭证过期重定向
 
-const API_BASE = import.meta.env.VITE_API_BASE || 'http://127.0.0.1:3000'
 const WS_BASE  = import.meta.env.VITE_WS_BASE || 'ws://127.0.0.1:3000'
 
 const authStore = useAuthStore()
@@ -172,8 +175,6 @@ let ws = null
 
 const fileInput = ref(null)
 const activeProfile = ref(null)
-
-// 💡 新增：激活菜单的对应数组索引，管理 Telegram 菜单的展开
 const activeMenuIndex = ref(null)
 
 let titleInterval = null
@@ -193,22 +194,19 @@ onMounted(() => {
   if (selectedContact.value) {
     selectContact(selectedContact.value)
   }
-  // 💡 核心机制：监听全局点击，以便在点击外部任何空白处时，自动闭合打开的 Telegram 菜单
   window.addEventListener('click', closeAllMenus)
 })
 
 onUnmounted(() => {
   if (ws) ws.close()
   stopTitleFlash()
-  window.removeEventListener('click', closeAllMenus) // 安全卸载监听器
+  window.removeEventListener('click', closeAllMenus)
 })
 
-// 统一关闭所有展开的气泡操作菜单
 const closeAllMenus = () => {
   activeMenuIndex.value = null
 }
 
-// 切换某个气泡菜单的开启与闭合
 const toggleMessageMenu = (index) => {
   if (activeMenuIndex.value === index) {
     activeMenuIndex.value = null
@@ -217,7 +215,6 @@ const toggleMessageMenu = (index) => {
   }
 }
 
-// 💡 菜单功能：复制文本
 const handleCopy = (text) => {
   try {
     navigator.clipboard.writeText(text)
@@ -225,16 +222,13 @@ const handleCopy = (text) => {
   } catch (err) {
     console.error('复制失败', err)
   }
-  activeMenuIndex.value = null // 自动合上菜单
+  activeMenuIndex.value = null
 }
 
-// 💡 菜单功能：撤回，集成 window.confirm 确认逻辑
 const handleRecall = (messageId, index) => {
-  activeMenuIndex.value = null // 自动合上菜单
-  
+  activeMenuIndex.value = null
   if (!connected.value || !ws || !selectedContact.value) return
 
-  // 💡 二次安全确认
   if (!window.confirm("确定要撤回这条消息吗？")) {
     return
   }
@@ -250,14 +244,15 @@ const handleRecall = (messageId, index) => {
     text: '你撤回了一条消息'
   })
 
+  // 💡 撤回后，同步重写最新一条摘要，并更新缓存
+  updateLastMessage(selectedContact.value, '你撤回了一条消息', true, '', true)
   chatStore.setHistory(selectedContact.value, [...messages])
 }
 
+// 💡 3. API重构：使用全局拦截器 apiFetch，代码缩短一半，自动捕获401跳转
 const fetchFriends = async () => {
   try {
-    const res = await fetch(`${API_BASE}/chat/friends`, {
-      headers: { 'Authorization': `Bearer ${authStore.token}` }
-    })
+    const res = await apiFetch('/chat/friends')
     const data = await res.json()
     if (res.ok) {
       const friendsWithUnread = data.friends.map(f => {
@@ -279,12 +274,8 @@ const addFriend = async () => {
   const friend = newFriendUsername.value.trim()
   if (!friend) return
   try {
-    const res = await fetch(`${API_BASE}/chat/add-friend`, {
+    const res = await apiFetch('/chat/add-friend', {
       method: 'POST',
-      headers: { 
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${authStore.token}` 
-      },
       body: JSON.stringify({ friend_username: friend })
     })
     const data = await res.json()
@@ -300,8 +291,6 @@ const addFriend = async () => {
     alert('网络故障')
   }
 }
-
-import { apiFetch } from '../utils/api'
 
 const selectContact = async (friendUsername) => {
   selectedContact.value = friendUsername
@@ -326,8 +315,7 @@ const selectContact = async (friendUsername) => {
     ws.send(JSON.stringify({ type: "read", to: friendUsername }))
   }
 
-try {
-    // 💡 干净清爽地请求，后台自动处理 Token 与过期重定向
+  try {
     const res = await apiFetch(`/chat/history/${friendUsername}`)
     const data = await res.json()
     if (res.ok) {
@@ -341,7 +329,7 @@ try {
       scrollToBottom()
     }
   } catch (err) {
-    console.error('加载历史记录失败:', err)
+    console.error('获取历史记录失败:', err)
   }
 }
 
@@ -383,6 +371,8 @@ const connectChat = () => {
           text: '对方撤回了一条消息'
         })
         chatStore.setHistory(selectedContact.value, [...messages])
+        // 💡 实时更新接收方列表的最新消息摘要
+        updateLastMessage(data.from, '对方撤回了一条消息', false, '', true)
       }
       return
     }
@@ -402,6 +392,9 @@ const connectChat = () => {
         scrollToBottom()
         chatStore.setHistory(selectedContact.value, [...messages])
 
+        // 💡 实时更新对方发来的最新一条消息在列表上的展示
+        updateLastMessage(data.from, data.message, false)
+
         ws.send(JSON.stringify({ type: "read", to: data.from }))
       } else {
         const friend = friends.value.find(f => f.username === data.from)
@@ -410,6 +403,9 @@ const connectChat = () => {
           chatStore.setFriends(friends.value)
         }
         triggerTitleFlash()
+        
+        // 💡 即使未打开会话，只要收到在线消息，列表最新一条也实时同步刷新
+        updateLastMessage(data.from, data.message, false)
       }
     }
   }
@@ -419,55 +415,37 @@ const connectChat = () => {
   }
 }
 
-const triggerTitleFlash = () => {
-  if (titleInterval) return
-  let isAlt = false
-  titleInterval = setInterval(() => {
-    document.title = isAlt ? "【新消息】DRIVE Space" : "【　　　】DRIVE Space"
-    isAlt = !isAlt
-  }, 800)
-}
+// 💡 4. 前端核心：高保真最新消息实时同步控制器 (自动处理图片过滤、超长文本截取与 Pinia 同步)
+const updateLastMessage = (friendUsername, text, isSelf = false, timeStr = '', isSystemNotice = false) => {
+  const friend = friends.value.find(f => f.username === friendUsername)
+  if (!friend) return
 
-const stopTitleFlash = () => {
-  if (titleInterval) {
-    clearInterval(titleInterval)
-    titleInterval = null
+  let displayMsg = text
+  if (text.startsWith('data:image/')) {
+    displayMsg = '[图片]'
+  } else if (!isSystemNotice && text.length > 15) {
+    displayMsg = text.substring(0, 15) + '...'
   }
-  document.title = originalTitle
-}
 
-const playNotificationSound = () => {
-  try {
-    const AudioContextClass = window.AudioContext || window.webkitAudioContext
-    const audioCtx = new AudioContextClass()
-    if (audioCtx.state === 'suspended') {
-      const resume = () => {
-        audioCtx.resume().then(() => {
-          playSynthPing(audioCtx)
-          window.removeEventListener('click', resume)
-        })
-      }
-      window.addEventListener('click', resume)
-      return
-    }
-    playSynthPing(audioCtx)
-  } catch (err) {
-    console.warn('音效阻碍:', err)
+  if (isSystemNotice) {
+    friend.last_message = displayMsg
+  } else {
+    const prefix = isSelf ? '我' : friend.nickname
+    friend.last_message = `${prefix}: ${displayMsg}`
   }
-}
 
-const playSynthPing = (audioCtx) => {
-  const osc = audioCtx.createOscillator()
-  const gainNode = audioCtx.createGain()
-  osc.type = 'sine'
-  osc.frequency.setValueAtTime(520, audioCtx.currentTime)
-  osc.frequency.exponentialRampToValueAtTime(880, audioCtx.currentTime + 0.08)
-  gainNode.gain.setValueAtTime(0.12, audioCtx.currentTime)
-  gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.25)
-  osc.connect(gainNode)
-  gainNode.connect(audioCtx.destination)
-  osc.start()
-  osc.stop(audioCtx.currentTime + 0.25)
+  // 整理最新消息的缩写时间戳 (取 HH:MM)
+  let timeLabel = ""
+  if (timeStr) {
+    timeLabel = timeStr.split(' ')[1] || ""
+  } else {
+    const now = new Date()
+    timeLabel = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`
+  }
+  friend.last_message_time = timeLabel
+
+  // 💡 同步提交给全局缓存，保障 0 毫秒秒开不受影响
+  chatStore.setFriends(friends.value)
 }
 
 const sendMessage = () => {
@@ -486,24 +464,25 @@ const sendMessage = () => {
     is_read: false 
   })
   
+  // 💡 实时更新左侧联系人卡片的最新消息为“我：刚才发的内容”
+  updateLastMessage(selectedContact.value, text, true)
+
   nextTick(async () => {
     try {
-      const res = await fetch(`${API_BASE}/chat/history/${selectedContact.value}`, {
-        headers: { 'Authorization': `Bearer ${authStore.token}` }
-      })
+      const res = await apiFetch(`/chat/history/${selectedContact.value}`)
       const data = await res.json()
       if (res.ok) {
         const localizedHistory = data.history.map(msg => ({
           ...msg,
           time: formatLocalTime(msg.time)
         }))
-        chatStore.setHistory(selectedContact.value, localizedHistory)
+        chatStore.setHistory(selectedContact.value, [...localizedHistory])
         messages.length = 0
         messages.push(...localizedHistory)
         scrollToBottom()
       }
-    } catch (e) {
-      console.error(e)
+    } catch (err) {
+      console.error('获取历史记录失败:', err)
     }
   })
 
@@ -514,8 +493,8 @@ const sendMessage = () => {
 const openUserProfile = async (targetUsername) => {
   try {
     const [profileRes, postsRes] = await Promise.all([
-      fetch(`${API_BASE}/auth/profile/${targetUsername}`),
-      fetch(`${API_BASE}/moments/user/${targetUsername}`)
+      apiFetch(`/auth/profile/${targetUsername}`),
+      apiFetch(`/moments/user/${targetUsername}`)
     ])
     if (profileRes.ok && postsRes.ok) {
       const user = await profileRes.json()
@@ -557,11 +536,12 @@ const handleImageUpload = (event) => {
       is_read: false
     })
     
+    // 💡 发图时，侧边栏实时展示 "[图片]" 缩略字
+    updateLastMessage(selectedContact.value, base64Data, true)
+
     nextTick(async () => {
       try {
-        const res = await fetch(`${API_BASE}/chat/history/${selectedContact.value}`, {
-          headers: { 'Authorization': `Bearer ${authStore.token}` }
-        })
+        const res = await apiFetch(`/chat/history/${selectedContact.value}`)
         const data = await res.json()
         if (res.ok) {
           const localizedHistory = data.history.map(msg => ({ ...msg, time: formatLocalTime(msg.time) }))
@@ -655,10 +635,23 @@ const getCurrentTimeLabel = () => {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  overflow: hidden; /* 防止溢出撑开 */
 }
-.contact-details { display: flex; flex-direction: column; text-align: left; }
+.contact-details { display: flex; flex-direction: column; text-align: left; overflow: hidden; flex: 1; }
+.contact-name-row { display: flex; justify-content: space-between; align-items: center; width: 100%; }
 .contact-name { font-weight: bold; font-size: 0.95rem; color: var(--x-text-main); }
-.contact-handle { font-size: 0.8rem; color: var(--x-text-gray); }
+.contact-time-sub { font-size: 0.75rem; color: var(--x-text-gray); margin-left: 8px; }
+
+/* 💡 新增：最新消息单行截取点缀 */
+.contact-last-msg {
+  font-size: 0.8rem;
+  color: var(--x-text-gray);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis; /* 文字超宽自动打点 */
+  margin-top: 2px;
+  text-align: left;
+}
 
 /* 亮红色未读数徽章 */
 .unread-badge {
@@ -681,7 +674,7 @@ const getCurrentTimeLabel = () => {
   100% { transform: scale(1); }
 }
 
-/* 极简头像 */
+/* 极简头像，细框 */
 .contact-avatar {
   width: 38px; height: 38px;
   background: #ffffff;
@@ -720,12 +713,12 @@ const getCurrentTimeLabel = () => {
 .peer-row { justify-content: flex-start; }
 .sys-row { justify-content: center; }
 
-/* 💡 气泡修剪使其支持绝对定位弹出菜单 */
+/* 消息气泡修剪 */
 .msg-bubble {
   max-width: 70%; padding: 10px 14px; font-size: 0.95rem; line-height: 1.4; word-wrap: break-word; 
-  position: relative; /* 💡 必须是 relative，以便菜单定位 */
+  position: relative; 
   cursor: pointer;
-  user-select: none; /* 防止长按选中文本干扰点击 */
+  user-select: none; 
 }
 .self-row .msg-bubble { background: var(--x-blue); color: white; border-radius: 18px 18px 2px 18px; }
 .peer-row .msg-bubble { background: #eff3f4; color: var(--x-text-main); border-radius: 18px 18px 18px 2px; }
@@ -743,44 +736,18 @@ const getCurrentTimeLabel = () => {
 .peer-row .msg-meta { justify-content: flex-end; }
 .peer-row .msg-time { color: var(--x-text-gray); }
 
-/* 🌟 Telegram 风格气泡操作菜单样式 */
-.telegram-menu {
-  position: absolute;
-  bottom: calc(100% + 4px); /* 💡 悬浮在消息气泡上方 */
-  background: #ffffff;
-  border: 1px solid var(--x-border);
-  border-radius: 12px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
-  padding: 4px;
-  z-index: 200;
-  display: flex;
-  flex-direction: column;
-  min-width: 90px;
-  animation: pop-menu 0.15s cubic-bezier(0.175, 0.885, 0.32, 1.15);
-}
-@keyframes pop-menu {
-  0% { transform: scale(0.85); opacity: 0; }
-  100% { transform: scale(1); opacity: 1; }
-}
-/* 💡 根据发送方还是接收方，让菜单靠右或靠左对齐 */
-.self-row .telegram-menu { right: 8px; }
-.peer-row .telegram-menu { left: 8px; }
-
-.menu-item {
-  background: transparent;
-  border: none;
-  padding: 8px 12px;
-  text-align: left;
-  font-size: 0.85rem;
-  font-weight: bold;
+/* 撤回按钮样式 */
+.btn-recall {
+  color: #a7f3d0;
   cursor: pointer;
-  color: var(--x-text-main);
-  border-radius: 8px;
-  transition: background 0.1s;
+  font-weight: bold;
+  opacity: 0.8;
+  margin-left: 2px;
 }
-.menu-item:hover { background: var(--x-bg-hover); }
-.menu-item.delete-btn { color: #ef4444; }
-.menu-item.delete-btn:hover { background: #fee2e2; }
+.btn-recall:hover {
+  text-decoration: underline;
+  opacity: 1;
+}
 
 /* 系统灰色提示丸子（撤回时显示） */
 .sys-notice {
