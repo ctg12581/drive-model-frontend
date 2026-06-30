@@ -147,6 +147,18 @@
               解除好友关系
             </button>
           </div>
+
+           <!-- 💡 新增：默契挑战入口 -->
+          <div v-if="friendQuiz && activeProfile.user.username !== authStore.username" style="margin-top: 10px;">
+            <!-- 如果没做过：显示挑战 -->
+            <button v-if="!friendQuiz.already_challenged" @click="startChallenge" class="btn-profile-delete" style="border-color: pink; color: #db2777;">
+              💖 挑战 TA 的默契度
+            </button>
+            <!-- 如果做过了：直接显示默契得分，并支持点击重测 -->
+            <div v-else @click="startChallenge" style="cursor: pointer; background: #fff5f5; border: 1px solid #ffd8d8; padding: 6px 12px; border-radius: 9999px; color: #ff5c5c; font-weight: bold; font-size: 0.85rem; display: inline-block;">
+              💘 你们的默契度: {{ friendQuiz.score }}% (点击重测)
+            </div>
+          </div>
         </div>
         <div class="modal-body">
           <h3 class="modal-tab-title">TA 的动态 ({{ activeProfile.posts.length }})</h3>
@@ -160,10 +172,32 @@
     </div>
 
   </div>
+
+
+   <div v-if="showChallengeModal" class="modal-backdrop" @click.self="showChallengeModal = false">
+      <div class="modal-card" style="max-width: 480px; max-height: 85vh; padding: 20px; text-align: left;">
+        <button class="modal-close" @click="showChallengeModal = false">✕</button>
+        <h3 style="margin-top: 0; font-size: 1.2rem; font-weight: 800; text-align: center; color: #db2777;">💘 {{ friendQuiz.title }}</h3>
+        <p style="font-size: 0.8rem; color: var(--x-text-gray); text-align: center; margin-bottom: 20px;">答题完毕后，点击提交即可由 AI 计算你们的灵犀指数！</p>
+        
+        <div class="modal-body" style="flex: 1; overflow-y: auto;">
+          <div v-for="(q, idx) in friendQuiz.questions" :key="q.id" class="quiz-setup-item" style="margin-bottom: 20px; border-bottom: 1px solid var(--x-border); padding-bottom: 12px;">
+            <p style="font-weight: bold; font-size: 0.95rem; margin: 0 0 10px 0;">Q{{ idx + 1 }}. {{ q.text }}</p>
+            <div style="display: flex; flex-direction: column; gap: 6px;">
+              <label v-for="opt in q.options" :key="opt" style="font-size: 0.85rem; display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                <input type="radio" :name="'challenge_q_' + q.id" :value="opt[0]" v-model="challengeAnswers[q.id]" style="width: auto;">
+                {{ opt }}
+              </label>
+            </div>
+          </div>
+          <button @click="submitChallenge" class="x-btn-dark" style="background: #db2777; color: white; height: 40px;">提交我的答题卡</button>
+        </div>
+      </div>
+    </div>
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted, nextTick, computed, watch } from 'vue'
+import { ref, reactive, onMounted, onUnmounted, nextTick, computed, watch } from 'vue' 
 import { useAuthStore } from '../store/auth'
 import { useChatStore } from '../store/chat'  // 💡 全局常驻
 import { formatLocalTime } from '../utils/date'
@@ -400,25 +434,70 @@ const sendMessage = () => {
   scrollToBottom()
 }
 
+const friendQuiz = ref(null) // 记录对方的测验信息
+const showChallengeModal = ref(false)
+const challengeAnswers = reactive({}) // 存储挑战者的答案
+
+// 在您原本的 openUserProfile 函数中，追加对好友测验的加载：
 const openUserProfile = async (targetUsername) => {
   try {
-    const [profileRes, postsRes] = await Promise.all([
+    const [profileRes, postsRes, quizRes] = await Promise.all([
       apiFetch(`/auth/profile/${targetUsername}`),
-      apiFetch(`/moments/user/${targetUsername}`)
+      apiFetch(`/moments/user/${targetUsername}`),
+      apiFetch(`/quiz/user/${targetUsername}`) 
     ])
-    if (profileRes.ok && postsRes.ok) {
+    if (profileRes.ok && postsRes.ok && quizRes.ok) {
       const user = await profileRes.json()
       const userPosts = await postsRes.json()
-      activeProfile.value = {
-        user: user,
-        posts: userPosts.moments
+      const quiz = await quizRes.json()
+      
+      activeProfile.value = { user, posts: userPosts.moments }
+      
+      // 存储测验情况
+      if (quiz.has_quiz) {
+        friendQuiz.value = quiz
+      } else {
+        friendQuiz.value = null
       }
-    } else {
-      alert('加载用户数据失败')
     }
-  } catch (err) {
-    console.error('加载主页异常:', err)
+  } catch {
     alert('无法加载该用户的主页')
+  }
+}
+
+// 开启答题挑战
+const startChallenge = () => {
+  if (!friendQuiz.value) return
+  // 初始化挑战答案，默认选A
+  friendQuiz.value.questions.forEach(q => {
+    challengeAnswers[q.id] = 'A'
+  })
+  showChallengeModal.value = true
+}
+
+// 提交答题卡并计算默契度
+const submitChallenge = async () => {
+  const payload = {
+    quiz_id: friendQuiz.value.quiz_id,
+    answers: challengeAnswers
+  }
+  try {
+    const res = await apiFetch('/quiz/submit', {
+      method: 'POST',
+      body: JSON.stringify(payload)
+    })
+    const data = await res.json()
+    if (res.ok) {
+      // 成功后，关闭答题弹窗，手动将最新得分展示在个人主页上（0ms交互）
+      showChallengeModal.value = false
+      friendQuiz.value.already_challenged = true
+      friendQuiz.value.score = data.score
+      
+      // 庆祝彩蛋
+      alert(`🎉 答题成功！你们的默契度高达: ${data.score}%！\n答对题数: ${data.correct_count}/${data.total_questions}`)
+    }
+  } catch {
+    alert('提交答题失败')
   }
 }
 

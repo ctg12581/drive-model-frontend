@@ -1,4 +1,4 @@
-<!-- src/views/AuthView.vue -->
+<!-- src/views/AuthView.vue (除了 <style scoped> 外的完整无缺版代码) -->
 <template>
   <div class="auth-wrapper">
     <!-- 未登录状态：展示极简 𝕏 登录/注册表单 -->
@@ -37,12 +37,15 @@
       </div>
     </div>
 
-    <!-- 💡 已登录状态：自适应升级为 𝕏 经典个人主页 (Profile Page) -->
+    <!-- 已登录状态：自适应升级为 𝕏 经典个人主页 (Profile Page) -->
     <div v-else class="profile-page-container">
       
       <!-- 主页头部名片卡 -->
       <div class="profile-hero-card">
-        <div class="profile-avatar-big">{{ authStore.avatar || '👤' }}</div>
+        <div class="profile-avatar-big">
+          <img v-if="isUrl(authStore.avatar)" :src="authStore.avatar" class="avatar-img-el" />
+          <span v-else>{{ authStore.avatar }}</span>
+        </div>
         <div class="profile-meta-info">
           <h2 class="profile-nickname">{{ authStore.nickname || authStore.username }}</h2>
           <p class="profile-handle">@{{ authStore.username }}</p>
@@ -51,6 +54,13 @@
             <button @click="showEditModal = true" class="x-btn-pill-light">编辑个人资料</button>
             <button @click="handleLogout" class="x-btn-danger-pill">退出登录</button>
           </div>
+          
+          <!-- 💡 恋爱默契挑战出题入口 -->
+          <div style="margin-top: 16px; width: 100%;">
+            <button @click="openQuizConfig" class="x-btn-pill-light" style="width: 100%; border-color: pink; color: #db2777;">
+              💖 配置我的默契测验
+            </button>
+          </div>
         </div>
       </div>
 
@@ -58,6 +68,7 @@
       <div class="my-timeline">
         <h3 class="timeline-title">我的动态 ({{ myPosts.length }})</h3>
         
+        <!-- 骨架屏占位 -->
         <div v-if="loading" class="skeleton-container" style="padding-top: 10px;">
           <div class="skeleton-card" v-for="i in 2" :key="i">
             <div class="skeleton-avatar"></div>
@@ -73,7 +84,10 @@
             您还没有发表过任何动态，去主页发一条新鲜事吧！
           </div>
           <div v-for="post in myPosts" :key="post.id" class="my-tweet-card">
-            <div class="my-tweet-avatar">{{ authStore.avatar || '👤' }}</div>
+            <div class="my-tweet-avatar">
+              <img v-if="isUrl(authStore.avatar)" :src="authStore.avatar" class="avatar-img-el" />
+              <span v-else>{{ authStore.avatar }}</span>
+            </div>
             <div class="my-tweet-main">
               <div class="my-tweet-header">
                 <span class="my-tweet-author">{{ authStore.nickname }}</span>
@@ -85,7 +99,7 @@
         </div>
       </div>
 
-      <!-- 💡 编辑个人名片模态弹窗 -->
+      <!-- 💡 1. 弹出模态：编辑个人名片弹窗 -->
       <div v-if="showEditModal" class="modal-backdrop" @click.self="showEditModal = false">
         <div class="modal-card" style="max-width: 400px; padding: 24px; text-align: left;">
           <button class="modal-close" @click="showEditModal = false">✕</button>
@@ -113,6 +127,29 @@
         </div>
       </div>
 
+      <!-- 💡 2. 弹出模态：默契测验配置弹窗 (出题箱) -->
+      <div v-if="showQuizModal" class="modal-backdrop" @click.self="showQuizModal = false">
+        <div class="modal-card" style="max-width: 480px; max-height: 85vh; padding: 20px; text-align: left;">
+          <button class="modal-close" @click="showQuizModal = false">✕</button>
+          <h3 style="margin-top: 0; font-size: 1.2rem; font-weight: 800; text-align: center; color: #db2777;">💖 默契挑战出题箱</h3>
+          <p style="font-size: 0.8rem; color: var(--x-text-gray); margin-bottom: 20px;">为下方的默契考验问题，预设您心中最完美的正确答案吧！</p>
+          
+          <div class="modal-body" style="flex: 1; overflow-y: auto;">
+            <div v-for="(q, idx) in bankQuestions" :key="q.id" class="quiz-setup-item" style="margin-bottom: 20px; border-bottom: 1px solid var(--x-border); padding-bottom: 12px;">
+              <p style="font-weight: bold; font-size: 0.95rem; margin: 0 0 10px 0;">Q{{ idx + 1 }}. {{ q.text }}</p>
+              <div style="display: flex; flex-direction: column; gap: 6px;">
+                <label v-for="opt in q.options" :key="opt" style="font-size: 0.85rem; display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                  <!-- 绑定答案为选项的首字母 (A, B, C, D) -->
+                  <input type="radio" :name="'q_' + q.id" :value="opt[0]" v-model="myAnswers[q.id]" style="width: auto;">
+                  {{ opt }}
+                </label>
+              </div>
+            </div>
+            <button @click="submitMyQuiz" class="x-btn-dark" style="background: #db2777; color: white; height: 40px; margin-top: 10px;">发布我的测验</button>
+          </div>
+        </div>
+      </div>
+
     </div>
   </div>
 </template>
@@ -120,29 +157,34 @@
 <script setup>
 import { ref, reactive, onMounted } from 'vue'
 import { useAuthStore } from '../store/auth'
+import { useChatStore } from '../store/chat'  // 💡 用于安全登出时切断 WebSocket
 import { useRouter } from 'vue-router'
 import { formatLocalTime } from '../utils/date'
 import { apiFetch } from '../utils/api'
 
 const API_BASE = import.meta.env.VITE_API_BASE || 'http://127.0.0.1:3000'
 const authStore = useAuthStore()
+const chatStore = useChatStore()
 const router = useRouter()
 
 const authMode = ref('login')
 const showEditModal = ref(false)
+const showQuizModal = ref(false)
 const loading = ref(true)
 
-// 1. 登录表单
+// 登录注册表单
 const form = reactive({ username: '', password: '' })
 
-// 2. 个人名片表单（初始值直接绑定 Pinia，0ms秒开）
+// 个人名片表单（瞬间读取缓存，0ms秒开）
 const profileForm = reactive({
   nickname: authStore.nickname || authStore.username,
   avatar_url: authStore.avatar || '👤'
 })
 
-// 3. 我的历史动态缓存 (SWR)
+// 我的历史动态与题库变量
 const myPosts = ref([])
+const bankQuestions = ref([])
+const myAnswers = reactive({}) // 绑定出题答案：{ "1": "A", "2": "C" }
 
 onMounted(() => {
   if (authStore.isLoggedIn) {
@@ -159,7 +201,7 @@ const fetchProfile = async () => {
     if (res.ok) {
       profileForm.nickname = data.nickname || authStore.username
       profileForm.avatar_url = data.avatar || '👤'
-      // 同步到全局状态，实现全站秒级同步
+      // 实时同步写入全局状态银行，触发全站侧边栏、顶栏瞬间更新
       authStore.updateProfileState(profileForm.nickname, profileForm.avatar_url)
     }
   } catch (err) {
@@ -232,9 +274,52 @@ const updateProfile = async () => {
   }
 }
 
+// 安全注销
 const handleLogout = () => {
+  chatStore.disconnectWebSocket()
   authStore.logout()
   router.push('/auth')
+}
+
+// 💡 打开出题箱（拉取题库）
+const openQuizConfig = async () => {
+  try {
+    const res = await apiFetch('/quiz/questions')
+    const data = await res.json()
+    if (res.ok) {
+      bankQuestions.value = data.questions
+      // 初始化答案，默认选中第一项
+      data.questions.forEach(q => {
+        if (!myAnswers[q.id]) myAnswers[q.id] = 'A'
+      })
+      showQuizModal.value = true
+    }
+  } catch {
+    alert('获取题库失败')
+  }
+}
+
+// 💡 提交发布我的专属默契测验
+const submitMyQuiz = async () => {
+  const payload = {
+    title: `${profileForm.nickname} 的默契大考验`,
+    questions: Object.keys(myAnswers).map(qId => ({
+      question_id: parseInt(qId),
+      answer: myAnswers[qId]
+    }))
+  }
+  try {
+    const res = await apiFetch('/quiz/create', {
+      method: 'POST',
+      body: JSON.stringify(payload)
+    })
+    if (res.ok) {
+      alert('您的专属默契挑战已成功发布！现在别人点击您的头像即可参与挑战！')
+      showQuizModal.value = false
+    }
+  } catch {
+    alert('发布测验失败')
+  }
 }
 
 const isUrl = (text) => {
@@ -242,6 +327,9 @@ const isUrl = (text) => {
   return text.startsWith('http://') || text.startsWith('https://') || text.startsWith('/')
 }
 </script>
+
+
+
 
 <style scoped>
 /* 𝕏 经典个人主页专属排版 */
