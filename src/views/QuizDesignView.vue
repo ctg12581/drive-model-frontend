@@ -329,7 +329,7 @@ const publishMyQuiz = async () => {
       // 💡 核心升级：成功发布后，立即在本地预载缓存。
       // 这能保证一跳转回 /quiz 页面时，顶层卡片瞬间、100% 变身为已发布状态，毫无多余闪烁！
       quizStore.setMyQuiz({
-        has_quiz: True,
+        has_quiz: true,
         title: '我的大考验',
         questions_count: selectedQuestions.value.length
       })
