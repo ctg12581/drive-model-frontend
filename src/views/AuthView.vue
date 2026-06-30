@@ -55,12 +55,7 @@
             <button @click="handleLogout" class="x-btn-danger-pill">退出登录</button>
           </div>
           
-          <!-- 💡 恋爱默契挑战出题入口 -->
-          <div style="margin-top: 16px; width: 100%;">
-            <button @click="openQuizConfig" class="x-btn-pill-light" style="width: 100%; border-color: pink; color: #db2777;">
-              💖 配置我的默契测验
-            </button>
-          </div>
+ 
         </div>
       </div>
 
@@ -127,29 +122,6 @@
         </div>
       </div>
 
-      <!-- 💡 2. 弹出模态：默契测验配置弹窗 (出题箱) -->
-      <div v-if="showQuizModal" class="modal-backdrop" @click.self="showQuizModal = false">
-        <div class="modal-card" style="max-width: 480px; max-height: 85vh; padding: 20px; text-align: left;">
-          <button class="modal-close" @click="showQuizModal = false">✕</button>
-          <h3 style="margin-top: 0; font-size: 1.2rem; font-weight: 800; text-align: center; color: #db2777;">💖 默契挑战出题箱</h3>
-          <p style="font-size: 0.8rem; color: var(--x-text-gray); margin-bottom: 20px;">为下方的默契考验问题，预设您心中最完美的正确答案吧！</p>
-          
-          <div class="modal-body" style="flex: 1; overflow-y: auto;">
-            <div v-for="(q, idx) in bankQuestions" :key="q.id" class="quiz-setup-item" style="margin-bottom: 20px; border-bottom: 1px solid var(--x-border); padding-bottom: 12px;">
-              <p style="font-weight: bold; font-size: 0.95rem; margin: 0 0 10px 0;">Q{{ idx + 1 }}. {{ q.text }}</p>
-              <div style="display: flex; flex-direction: column; gap: 6px;">
-                <label v-for="opt in q.options" :key="opt" style="font-size: 0.85rem; display: flex; align-items: center; gap: 8px; cursor: pointer;">
-                  <!-- 绑定答案为选项的首字母 (A, B, C, D) -->
-                  <input type="radio" :name="'q_' + q.id" :value="opt[0]" v-model="myAnswers[q.id]" style="width: auto;">
-                  {{ opt }}
-                </label>
-              </div>
-            </div>
-            <button @click="submitMyQuiz" class="x-btn-dark" style="background: #db2777; color: white; height: 40px; margin-top: 10px;">发布我的测验</button>
-          </div>
-        </div>
-      </div>
-
     </div>
   </div>
 </template>
@@ -169,7 +141,6 @@ const router = useRouter()
 
 const authMode = ref('login')
 const showEditModal = ref(false)
-const showQuizModal = ref(false)
 const loading = ref(true)
 
 // 登录注册表单
@@ -281,46 +252,6 @@ const handleLogout = () => {
   router.push('/auth')
 }
 
-// 💡 打开出题箱（拉取题库）
-const openQuizConfig = async () => {
-  try {
-    const res = await apiFetch('/quiz/questions')
-    const data = await res.json()
-    if (res.ok) {
-      bankQuestions.value = data.questions
-      // 初始化答案，默认选中第一项
-      data.questions.forEach(q => {
-        if (!myAnswers[q.id]) myAnswers[q.id] = 'A'
-      })
-      showQuizModal.value = true
-    }
-  } catch {
-    alert('获取题库失败')
-  }
-}
-
-// 💡 提交发布我的专属默契测验
-const submitMyQuiz = async () => {
-  const payload = {
-    title: `${profileForm.nickname} 的默契大考验`,
-    questions: Object.keys(myAnswers).map(qId => ({
-      question_id: parseInt(qId),
-      answer: myAnswers[qId]
-    }))
-  }
-  try {
-    const res = await apiFetch('/quiz/create', {
-      method: 'POST',
-      body: JSON.stringify(payload)
-    })
-    if (res.ok) {
-      alert('您的专属默契挑战已成功发布！现在别人点击您的头像即可参与挑战！')
-      showQuizModal.value = false
-    }
-  } catch {
-    alert('发布测验失败')
-  }
-}
 
 const isUrl = (text) => {
   if (!text) return false

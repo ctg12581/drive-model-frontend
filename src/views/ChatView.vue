@@ -148,17 +148,7 @@
             </button>
           </div>
 
-           <!-- 💡 新增：默契挑战入口 -->
-          <div v-if="friendQuiz && activeProfile.user.username !== authStore.username" style="margin-top: 10px;">
-            <!-- 如果没做过：显示挑战 -->
-            <button v-if="!friendQuiz.already_challenged" @click="startChallenge" class="btn-profile-delete" style="border-color: pink; color: #db2777;">
-              💖 挑战 TA 的默契度
-            </button>
-            <!-- 如果做过了：直接显示默契得分，并支持点击重测 -->
-            <div v-else @click="startChallenge" style="cursor: pointer; background: #fff5f5; border: 1px solid #ffd8d8; padding: 6px 12px; border-radius: 9999px; color: #ff5c5c; font-weight: bold; font-size: 0.85rem; display: inline-block;">
-              💘 你们的默契度: {{ friendQuiz.score }}% (点击重测)
-            </div>
-          </div>
+         
         </div>
         <div class="modal-body">
           <h3 class="modal-tab-title">TA 的动态 ({{ activeProfile.posts.length }})</h3>
@@ -441,26 +431,27 @@ const challengeAnswers = reactive({}) // 存储挑战者的答案
 // 在您原本的 openUserProfile 函数中，追加对好友测验的加载：
 const openUserProfile = async (targetUsername) => {
   try {
-    const [profileRes, postsRes, quizRes] = await Promise.all([
+    // 1. 纯净流：只拉取用户资料与用户动态，彻底删除对 /quiz 的调用
+    const [profileRes, postsRes] = await Promise.all([
       apiFetch(`/auth/profile/${targetUsername}`),
-      apiFetch(`/moments/user/${targetUsername}`),
-      apiFetch(`/quiz/user/${targetUsername}`) 
+      apiFetch(`/moments/user/${targetUsername}`)
     ])
-    if (profileRes.ok && postsRes.ok && quizRes.ok) {
+    
+    // 2. 仅校验这两者的状态
+    if (profileRes.ok && postsRes.ok) {
       const user = await profileRes.json()
       const userPosts = await postsRes.json()
-      const quiz = await quizRes.json()
       
-      activeProfile.value = { user, posts: userPosts.moments }
-      
-      // 存储测验情况
-      if (quiz.has_quiz) {
-        friendQuiz.value = quiz
-      } else {
-        friendQuiz.value = null
+      // 装载弹窗
+      activeProfile.value = {
+        user: user,
+        posts: userPosts.moments
       }
+    } else {
+      alert('加载用户数据失败')
     }
-  } catch {
+  } catch (err) {
+    console.error('加载主页异常:', err)
     alert('无法加载该用户的主页')
   }
 }

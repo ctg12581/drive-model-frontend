@@ -1,24 +1,20 @@
-<!-- src/App.vue (100% 完整版代码，包含模板、脚本与样式，可直接全量覆盖) -->
+<!-- src/App.vue -->
 <template>
   <div class="app-layout">
     
-    <!-- 1. 移动端顶部固定状态栏 (在 >=768px 时通过 CSS 自动隐藏) -->
+    <!-- 1. 移动端顶部固定栏 (💡 点击左侧头像现在会瞬间“滑出”侧边抽屉栏) -->
     <header class="mobile-top-bar">
-      <!-- 点击左侧圆形头像，平滑跳转到个人资料设置页 -->
-      <router-link to="/auth" class="avatar-placeholder-link">
-        <div class="avatar-placeholder">
-          <img v-if="isUrl(authStore.avatar)" :src="authStore.avatar" class="avatar-img-el" />
-          <span v-else>{{ authStore.avatar }}</span>
-        </div>
-      </router-link>
+      <div class="avatar-placeholder" @click="isMobileMenuOpen = true" style="cursor: pointer;">
+        <img v-if="isUrl(authStore.avatar)" :src="authStore.avatar" class="avatar-img-el" />
+        <span v-else>{{ authStore.avatar }}</span>
+      </div>
       <div class="app-logo">𝕏 DRIVE Space</div>
       <div class="top-action-placeholder" style="width: 32px;"></div>
     </header>
 
-    <!-- 2. 全站核心响应式布局布局 -->
+    <!-- 2. 全站核心响应式布局 -->
     <div class="main-container">
-      
-      <!-- 左侧边栏导航 (PC 端可见，自适应隐藏) -->
+      <!-- 左侧边栏导航 (PC 端可见) -->
       <aside class="sidebar">
         <div class="sidebar-logo">𝕏</div>
         <nav class="sidebar-nav">
@@ -38,7 +34,15 @@
             <span class="text">搜索</span>
           </router-link>
 
-          <!-- 通知 (包含待批准好友申请红点计数) -->
+          <!-- 默契度挑战 (仅在 PC 侧边栏常驻) -->
+          <router-link to="/quiz" class="sidebar-link" active-class="active">
+            <span class="icon" style="color: #db2777;">
+              <svg viewBox="0 0 24 24" class="svg-icon" style="fill: currentColor;"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>
+            </span>
+            <span class="text">默契度挑战</span>
+          </router-link>
+
+          <!-- 通知 -->
           <router-link to="/notifications" class="sidebar-link" active-class="active">
             <span class="icon">
               <svg viewBox="0 0 24 24" class="svg-icon"><path d="M21.163 11.636L19 9.473V6c0-3.309-2.691-6-6-6S7 2.691 7 6v3.473L4.837 11.64c-.21.21-.337.5-.337.803v3.53c0 .553.448 1 1 1h5.182a3.003 3.003 0 0 0 5.636 0h5.182c.552 0 1-.447 1-1v-3.53c0-.303-.127-.593-.337-.807zM13 19a1.002 1.002 0 0 1-1-1h2c0 .552-.448 1-1 1zm7-3H6v-3.111l1.837-1.836A1 1 0 0 0 8.163 11V6c0-2.206 1.794-4 4-4s4 1.794 4 4v5a1 1 0 0 0 .326.713L20 12.889V16z"/></svg>
@@ -51,7 +55,7 @@
             </span>
           </router-link>
 
-          <!-- 聊天 (包含实时私信未读数红点) -->
+          <!-- 聊天 -->
           <router-link to="/chat" class="sidebar-link" active-class="active">
             <span class="icon">
               <svg viewBox="0 0 24 24" class="svg-icon"><path d="M20 2H4c-1.1 0-1.99.9-1.99 2L2 22l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zM6 9h12v2H6V9zm8 5H6v-2h8v2zm4-6H6V6h12v2z"/></svg>
@@ -72,7 +76,7 @@
             <span class="text">个人资料</span>
           </router-link>
 
-          <!-- PC 大发帖按钮 -->
+          <!-- PC 发帖大按钮 -->
           <button v-if="authStore.isLoggedIn" @click="showComposeModal = true" class="sidebar-post-btn">
             发 帖
           </button>
@@ -91,12 +95,12 @@
         </div>
       </aside>
 
-      <!-- 中间主内容路由 -->
+      <!-- 中间主内容流 -->
       <main class="content-area">
         <router-view />
       </main>
 
-      <!-- 右侧推荐面板 -->
+      <!-- 右侧推荐区 -->
       <aside class="right-panel">
         <div class="trends-box">
           <h3>𝕏 推荐话题</h3>
@@ -114,12 +118,12 @@
       </aside>
     </div>
 
-    <!-- 💡 移动端右下角漂浮发帖按钮 (在 auth 且处于 '/home' 主页路由下才显示) -->
+    <!-- 移动端右下角悬浮发帖按钮 (只有在 '/home' 路由下才显示) -->
     <button v-if="authStore.isLoggedIn && route.path === '/home'" @click="showComposeModal = true" class="mobile-fab-btn">
       <svg viewBox="0 0 24 24" class="svg-inline" style="width: 24px; height: 24px; fill: white;"><path d="M23 3c-6.62-.1-10.38 2.421-13.05 6.03C7.29 12.61 6 17.331 6 22h2c0-1.007.07-2.012.19-3H12c4.1 0 7.48-3.082 7.94-7.054C22.79.137 23 0 23 0zm-7 11.054c-2.45 0-4.44-1.59-4.44-4.041 0-2.451 1.99-4.441 4.44-4.441 2.451 0 4.441 1.99 4.441 4.441 0 2.451-1.99 4.041-4.441 4.041zM2.5 15h3V13h-3v-3h-2v3h-3v2h3v3h2v-3z"/></svg>
     </button>
 
-    <!-- 💡 3. 移动端底部固底导航栏 (完全校准为新 𝕏 路由：主页、搜索、通知、聊天) -->
+    <!-- 💡 3. 移动端底部固底导航栏 (彻底精简为最干净的 4 维大导航，移除了默契) -->
     <nav class="mobile-bottom-bar">
       <!-- 主页 -->
       <router-link to="/home" class="bottom-link" active-class="active">
@@ -149,7 +153,49 @@
       </router-link>
     </nav>
 
-    <!-- 全局发帖大模态弹窗 (保持原样) -->
+    <!-- 💡 4. 新增：移动端极简 𝕏 侧边滑出抽屉菜单 (Mobile Slide-out Drawer) -->
+    <div v-if="isMobileMenuOpen" class="mobile-drawer-backdrop" @click="isMobileMenuOpen = false">
+      <!-- 阻止事件冒泡，防止点击抽屉内也触发关闭 -->
+      <div class="mobile-drawer" @click.stop>
+        <div class="drawer-header">
+          <div class="drawer-avatar">
+            <img v-if="isUrl(authStore.avatar)" :src="authStore.avatar" class="avatar-img-el" />
+            <span v-else>{{ authStore.avatar }}</span>
+          </div>
+          <div class="drawer-user-info">
+            <div class="drawer-nickname">{{ authStore.nickname || authStore.username }}</div>
+            <div class="drawer-handle">@{{ authStore.username }}</div>
+          </div>
+        </div>
+
+        <!-- 抽屉导航链接 -->
+        <nav class="drawer-nav">
+          <!-- 💡 默契度入口移植到此 -->
+          <router-link to="/quiz" class="drawer-link" active-class="active" @click="isMobileMenuOpen = false">
+            <span class="icon" style="color: #db2777;">
+              <svg viewBox="0 0 24 24" class="svg-icon-drawer"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>
+            </span>
+            <span class="text">默契度挑战</span>
+          </router-link>
+
+          <!-- 个人资料/设置 -->
+          <router-link to="/auth" class="drawer-link" active-class="active" @click="isMobileMenuOpen = false">
+            <span class="icon">
+              <svg viewBox="0 0 24 24" class="svg-icon-drawer"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>
+            </span>
+            <span class="text">个人资料</span>
+          </router-link>
+        </nav>
+
+        <div class="drawer-footer">
+          <button @click="handleLogout" class="x-btn-danger-pill" style="height: 38px; width: 100%;">
+            退出登录
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 全局发帖大模态弹窗 -->
     <div v-if="showComposeModal" class="modal-backdrop" @click.self="closeComposeModal">
       <div class="modal-card compose-modal-card">
         <div class="compose-modal-header">
@@ -190,10 +236,14 @@ const chatStore = useChatStore()
 const router = useRouter()
 const route = useRoute()
 
+// 移动端侧边抽屉控制状态
+const isMobileMenuOpen = ref(false)
+
 const showComposeModal = ref(false)
 const globalPostContent = ref('')
 
 const handleLogout = () => {
+  isMobileMenuOpen.value = false 
   chatStore.disconnectWebSocket()
   authStore.logout()
   router.push('/auth')
@@ -246,6 +296,11 @@ const isUrl = (text) => {
   return text.startsWith('http://') || text.startsWith('https://') || text.startsWith('/')
 }
 </script>
+
+
+
+
+
 
 <style>
 /* 𝕏 全局重置样式（移动端自适应） */
@@ -525,5 +580,88 @@ body {
 }
 @media (min-width: 1095px) {
   .right-panel { display: block; }
+}
+/* 💡 新增：移动端顶部头像无下划线高亮链接 */
+.avatar-placeholder-link {
+  text-decoration: none;
+  color: inherit;
+  display: flex;
+  align-items: center;
+}
+
+/* 💡 新增：移动端极简 𝕏 侧边抽屉菜单样式 (适配手机触控体验) */
+.mobile-drawer-backdrop {
+  position: fixed; top: 0; bottom: 0; left: 0; right: 0;
+  background: rgba(0, 0, 0, 0.4);
+  z-index: 1000;
+  display: flex;
+  justify-content: flex-start; /* 靠左对齐 */
+}
+/* 电脑端强制隐藏该抽屉 */
+@media (min-width: 768px) {
+  .mobile-drawer-backdrop { display: none !important; }
+}
+
+.mobile-drawer {
+  width: 280px;
+  height: 100%;
+  background: #ffffff;
+  box-shadow: 4px 0 24px rgba(0, 0, 0, 0.15);
+  display: flex;
+  flex-direction: column;
+  padding: 20px 16px;
+  box-sizing: border-box;
+  /* 𝕏 经典滑出阻尼弹性动画 */
+  animation: slide-right 0.25s cubic-bezier(0.175, 0.885, 0.32, 1.12);
+}
+@keyframes slide-right {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(0); }
+}
+
+/* 抽屉头部用户信息区 */
+.drawer-header {
+  padding-bottom: 20px;
+  border-bottom: 1px solid var(--x-border);
+  text-align: left;
+}
+.drawer-avatar {
+  width: 48px; height: 48px; background: #ffffff; border: 1px solid var(--x-border);
+  border-radius: 50%; display: flex; align-items: center; justify-content: center; 
+  font-weight: bold; overflow: hidden; margin-bottom: 12px; font-size: 1.4rem;
+}
+.drawer-user-info { display: flex; flex-direction: column; }
+.drawer-nickname { font-weight: bold; font-size: 1.1rem; color: var(--x-text-main); }
+.drawer-handle { font-size: 0.9rem; color: var(--x-text-gray); margin-top: 1px; }
+
+/* 抽屉操作链接 */
+.drawer-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 24px 0;
+  flex: 1;
+}
+.drawer-link {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 10px 12px;
+  text-decoration: none;
+  color: var(--x-text-main);
+  font-size: 1.1rem;
+  font-weight: bold;
+  border-radius: 8px;
+  transition: background 0.15s;
+  text-align: left;
+}
+.drawer-link:hover { background: var(--x-bg-hover); }
+.drawer-link.active { color: var(--x-blue); background: var(--x-bg-hover); }
+.svg-icon-drawer { width: 22px; height: 22px; fill: currentColor; }
+
+/* 抽屉底部安全注销 */
+.drawer-footer {
+  border-top: 1px solid var(--x-border);
+  padding-top: 16px;
 }
 </style>
