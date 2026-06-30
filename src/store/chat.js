@@ -186,35 +186,41 @@ export const useChatStore = defineStore('chat', () => {
     }
   }
 
-  function updateLastMessageState(friendUsername, text, isSelf = false, timeStr = '', isSystemNotice = false) {
-    const friend = cachedFriends.value.find(f => f.username === friendUsername)
-    if (!friend) return
+ function updateLastMessageState(friendUsername, text, isSelf = false, timeStr = '', isSystemNotice = false) {
+        const friend = cachedFriends.value.find(f => f.username === friendUsername)
+        if (!friend) return
 
-    let displayMsg = text
-    if (text.startsWith('data:image/')) {
-      displayMsg = '[图片]'
-    } else if (!isSystemNotice && text.length > 15) {
-      displayMsg = text.substring(0, 15) + '...'
-    }
+        let displayMsg = text
+        
+        // 💡 核心修复：更新图片的正则判定，支持 data:image/ 前缀和标准的 R2 云图片链接后缀
+        const isImg = text.startsWith('data:image/') || text.match(/\.(jpeg|jpg|gif|png|webp)/i) != null
+        
+        if (isImg) {
+          displayMsg = '[图片]'
+        } else if (!isSystemNotice && text.length > 15) {
+          displayMsg = text.substring(0, 15) + '...'
+        }
 
-    if (isSystemNotice) {
-      friend.last_message = displayMsg
-    } else {
-      const prefix = isSelf ? '我' : friend.nickname
-      friend.last_message = `${prefix}: ${displayMsg}`
-    }
+        if (isSystemNotice) {
+          friend.last_message = displayMsg
+        } else {
+          const prefix = isSelf ? '我' : friend.nickname
+          friend.last_message = `${prefix}: ${displayMsg}`
+        }
 
-    let timeLabel = ""
-    if (timeStr) {
-      timeLabel = timeStr.split(' ')[1] || ""
-    } else {
-      const now = new Date()
-      timeLabel = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`
-    }
-    friend.last_message_time = timeLabel
-    
-    setFriends([...cachedFriends.value])
-  }
+        let timeLabel = ""
+        if (timeStr) {
+          timeLabel = timeStr.split(' ')[1] || ""
+        } else {
+          const now = new Date()
+          timeLabel = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`
+        }
+        friend.last_message_time = timeLabel
+        
+        setFriends([...cachedFriends.value])
+      }
+
+
 
   function playNotificationSound() {
     try {
