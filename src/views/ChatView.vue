@@ -426,43 +426,74 @@ const triggerImageSelect = () => {
   if (fileInput.value) { fileInput.value.click() }
 }
 
-const handleImageUpload = (event) => {
+const handleImageUpload = async (event) => {
   const file = event.target.files[0]
   if (!file) return
 
-  if (file.size > 1024 * 1024) {
-    alert("图片过大，测试版限制上传小于 1MB 的图片。")
+  // 1. 限制文件上传大小为 2MB 
+  if (file.size > 2 * 1024 * 1024) {
+    alert("图片过大，限制上传小于 2MB 的图片。")
     event.target.value = ""
     return
   }
 
-  const reader = new FileReader()
-  reader.onload = () => {
-    const base64Data = reader.result
-    
-    chatStore.sendWebSocketPayload({
-      type: "msg",
-      to: selectedContact.value,
-      message: base64Data
-    })
-    
-    chatStore.activeMessages.push({
-      id: null,
-      from: authStore.username,
-      text: base64Data,
-      time: getCurrentTimeLabel(),
-      self: true,
-      system: false,
-      is_read: false
-    })
-    
-    updateLastMessage(selectedContact.value, base64Data, true)
-    chatStore.setHistory(selectedContact.value, [...chatStore.activeMessages])
-
-    scrollToBottom()
+  // 2. 💡 核心优化 A：选择图片需要确认。利用 HTML5 的 ObjectURL 机制零延迟本地生成预览
+  const localPreviewUrl = URL.createObjectURL(file)
+  
+  // 弹出安全确认框
+  if (!window.confirm("确定要向对方发送选择的这张图片吗？")) {
+    URL.revokeObjectURL(localPreviewUrl) 
+    event.target.value = "" 
+    return
   }
-  reader.readAsDataURL(file)
-  event.target.value = ""
+
+  try {
+    // 3. 💡 核心优化 B：利用标准的 HTTP FormData 发起文件上传
+    const formData = new FormData()
+    formData.append("file", file)
+
+    // 调用我们在上一步重构的 apiFetch，自动携带 JWT 并支持上传
+    const res = await apiFetch("/chat/upload", {
+      method: "POST",
+      body: formData 
+    })
+    const data = await res.json()
+
+    if (res.ok && data.success) {
+      // 💡 升级：自适应识别：如果后端传回的是 http/https 开头的绝对云地址直接使用，否则再使用 API_BASE 拼接
+      const imageUrl = data.url.startsWith('http') ? data.url : `${API_BASE}${data.url}`
+
+      // 通过 WebSocket 发送短 URL 链接
+      chatStore.sendWebSocketPayload({
+        type: "msg",
+        to: selectedContact.value,
+        message: imageUrl
+      })
+
+      // 本地追加渲染
+      chatStore.activeMessages.push({
+        id: null,
+        from: authStore.username,
+        text: imageUrl,
+        time: getCurrentTimeLabel(),
+        self: true,
+        system: false,
+        is_read: false
+      })
+
+      // 同步刷新左侧卡片显示为 [图片]
+      chatStore.updateLastMessageState(selectedContact.value, '[图片]', true)
+      chatStore.setHistory(selectedContact.value, [...chatStore.activeMessages])
+    } else {
+      alert(data.detail || "图片上传失败")
+    }
+  } catch (err) {
+    console.error(err)
+    alert("上传图片过程中发生网络故障")
+  } finally {
+    URL.revokeObjectURL(localPreviewUrl) 
+    event.target.value = "" 
+  }
 }
 
 const isImage = (text) => {

@@ -11,13 +11,13 @@ const API_BASE = import.meta.env.VITE_API_BASE || 'http://127.0.0.1:3000'
 export async function apiFetch(endpoint, options = {}) {
   const authStore = useAuthStore()
 
-  // 自动设置与补全 Headers
-  const headers = {
-    'Content-Type': 'application/json',
-    ...options.headers,
+  // 💡 核心优化：如果发送的内容是上传文件（FormData），千万不能手动设置 Content-Type，
+  // 必须让浏览器自动填入带有 boundary 分割符的 'multipart/form-data'，其余请求默认 application/json
+  const headers = { ...options.headers }
+  if (!(options.body instanceof FormData)) {
+    headers['Content-Type'] = 'application/json'
   }
 
-  // 如果本地有 Token，自动在 Header 中安全塞入 Bearer Token
   if (authStore.token) {
     headers['Authorization'] = `Bearer ${authStore.token}`
   }
@@ -30,7 +30,6 @@ export async function apiFetch(endpoint, options = {}) {
   try {
     const response = await fetch(`${API_BASE}${endpoint}`, mergedOptions)
 
-    // 💡 动态保险：一旦后端由于 Token 过期返回 401 状态码
     if (response.status === 401) {
       authStore.logout()
       router.push('/auth')
